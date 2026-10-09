@@ -57,10 +57,10 @@ Other system tray icons**.
 AudioFlipper targets .NET Framework 4.8, which is part of Windows 10 and 11, so there's nothing
 else to install.
 
-- **Download:** open the repository's **Actions** tab, select the latest **Build** run, and
-  download the `AudioFlipper` artifact. Extract the zip, put `AudioFlipper.exe` somewhere it can
-  stay (for example a folder in Documents) and double-click it. Windows SmartScreen may warn about
-  an unsigned app; choose **More info → Run anyway**.
+- **Download:** get `AudioFlipper.exe` from the latest release on the repository's
+  [Releases](https://github.com/Lucidic15/AudtioFlipper/releases/latest) page. Put it somewhere it can stay (for example a folder in
+  Documents) and double-click it. Windows SmartScreen may warn about an unsigned app; choose
+  **More info → Run anyway**. Builds of every change are also on the **Actions** tab.
 - **Build it yourself:** install the [.NET SDK](https://dotnet.microsoft.com/download) and run
 
   ```
@@ -70,6 +70,10 @@ else to install.
   The exe is written to `src/AudioFlipper/bin/Release/net48/AudioFlipper.exe`.
 
 Use **Start with Windows** in the right-click menu to launch it at sign-in, and **Exit** to close it.
+
+To publish a new release, set `<Version>` in `src/AudioFlipper/AudioFlipper.csproj`, add release
+notes as `.github/release-notes/v<version>.md`, and push a `v<version>` tag. The **Build** workflow
+builds the exe and publishes the release with it attached.
 
 ## Which devices are in the rotation
 
