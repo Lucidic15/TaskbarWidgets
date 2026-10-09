@@ -23,11 +23,9 @@ namespace AudioFlipper
         readonly float dpiScale;
 
         bool roundedByWindows;
-        string glyph = Glyphs.Speakers;
+        OutputStatus status; // Null while showing a message.
         string title = "";
         string detail = "";
-        int? volumePercent;
-        bool muted;
 
         public OsdForm()
         {
@@ -69,21 +67,17 @@ namespace AudioFlipper
                 return;
             }
 
-            glyph = Glyphs.For(status);
+            this.status = status;
             title = status.Device.Name;
             detail = null;
-            volumePercent = status.VolumePercent;
-            muted = status.Muted;
             Present();
         }
 
         public void ShowMessage(string title, string detail)
         {
-            glyph = Glyphs.Warning;
+            status = null;
             this.title = title;
             this.detail = detail;
-            volumePercent = null;
-            muted = false;
             Present();
         }
 
@@ -130,7 +124,11 @@ namespace AudioFlipper
             graphics.Clear(background);
             graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-            Glyphs.Draw(graphics, glyph, new RectangleF(Px(18), Px(20), Px(32), Px(32)), foreground);
+            var iconBounds = new Rectangle(Px(18), Px(20), Px(32), Px(32));
+            if (status != null)
+                DeviceIcons.Draw(graphics, status, iconBounds, foreground);
+            else
+                Glyphs.Draw(graphics, Glyphs.Warning, iconBounds, foreground);
 
             int textLeft = Px(66);
             int textWidth = Width - textLeft - Px(18);
@@ -140,16 +138,16 @@ namespace AudioFlipper
             TextRenderer.DrawText(graphics, title, titleFont,
                 new Rectangle(textLeft, Px(12), textWidth, Px(24)), foreground, flags | TextFormatFlags.Left);
 
-            if (volumePercent is int volume)
+            if (status != null)
             {
                 int labelWidth = Px(48);
-                TextRenderer.DrawText(graphics, muted ? "Muted" : volume + "%", detailFont,
+                TextRenderer.DrawText(graphics, status.Muted ? "Muted" : status.VolumePercent + "%", detailFont,
                     new Rectangle(Width - Px(18) - labelWidth, Px(38), labelWidth, Px(22)), secondary, flags | TextFormatFlags.Right);
 
                 var bar = new RectangleF(textLeft, Px(47), textWidth - labelWidth - Px(10), Px(4));
-                FillPill(graphics, track, bar);
-                if (!muted)
-                    FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, volume) / 100f, bar.Height));
+                Shapes.FillPill(graphics, track, bar);
+                if (!status.Muted)
+                    Shapes.FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, status.VolumePercent) / 100f, bar.Height));
             }
             else
             {
@@ -177,21 +175,5 @@ namespace AudioFlipper
         }
 
         int Px(int value) => (int)Math.Round(value * dpiScale);
-
-        static void FillPill(Graphics graphics, Color color, RectangleF rect)
-        {
-            if (rect.Width <= 0 || rect.Height <= 0)
-                return;
-
-            float diameter = Math.Min(rect.Width, rect.Height);
-            using (var path = new GraphicsPath())
-            using (var brush = new SolidBrush(color))
-            {
-                path.AddArc(rect.X, rect.Y, diameter, diameter, 90, 180);
-                path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 180);
-                path.CloseFigure();
-                graphics.FillPath(brush, path);
-            }
-        }
     }
 }

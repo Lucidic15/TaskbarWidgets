@@ -15,8 +15,14 @@ namespace AudioFlipper
         /// <summary>Also make the new device the default communications device (used by Teams, Discord, etc.).</summary>
         public bool SwitchCommunications { get; set; } = true;
 
-        /// <summary>Show the popup when the output device changes.</summary>
+        /// <summary>Show the popup when the output device changes (only while the taskbar widget isn't showing).</summary>
         public bool ShowPopup { get; set; } = true;
+
+        /// <summary>Show the widget on the taskbar.</summary>
+        public bool ShowOnTaskbar { get; set; } = true;
+
+        /// <summary>Taskbar widget position in pixels from the taskbar's left edge; negative for the default.</summary>
+        public int TaskbarOffset { get; set; } = -1;
 
         public bool IsExcluded(string deviceId) => excludedDeviceIds.Contains(deviceId);
 
@@ -52,6 +58,13 @@ namespace AudioFlipper
                         case "ShowPopup":
                             settings.ShowPopup = ParseBool(value, settings.ShowPopup);
                             break;
+                        case "ShowOnTaskbar":
+                            settings.ShowOnTaskbar = ParseBool(value, settings.ShowOnTaskbar);
+                            break;
+                        case "TaskbarOffset":
+                            if (int.TryParse(value, out int offset))
+                                settings.TaskbarOffset = offset;
+                            break;
                         case "Exclude":
                             settings.excludedDeviceIds.Add(value);
                             break;
@@ -72,6 +85,8 @@ namespace AudioFlipper
                 "# AudioFlipper settings",
                 "SwitchCommunications=" + SwitchCommunications,
                 "ShowPopup=" + ShowPopup,
+                "ShowOnTaskbar=" + ShowOnTaskbar,
+                "TaskbarOffset=" + TaskbarOffset,
             };
             foreach (string id in excludedDeviceIds)
                 lines.Add("Exclude=" + id);

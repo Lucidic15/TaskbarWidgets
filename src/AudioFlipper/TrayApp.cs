@@ -9,13 +9,15 @@ using AudioFlipper.Audio;
 namespace AudioFlipper
 {
     /// <summary>
-    /// The notification-area icon. Left-click switches to the next output, middle-click
-    /// toggles mute and right-click opens the menu. Hovering shows the device and volume.
+    /// Runs the taskbar widget and the notification-area icon. On either, left-click switches to the
+    /// next output, middle-click toggles mute and right-click opens the menu. The widget also changes
+    /// volume with the mouse wheel.
     /// </summary>
     internal sealed class TrayApp : ApplicationContext
     {
-        const int RefreshIntervalMilliseconds = 1000;
+        const int RefreshIntervalMilliseconds = 500;
         const int MaxTooltipLength = 63; // NotifyIcon.Text limit on .NET Framework.
+        const int VolumeStepPercent = 2; // Same step as the Windows volume flyout.
 
         readonly AudioDeviceManager audio = new AudioDeviceManager();
         readonly Settings settings = Settings.Load();
@@ -23,6 +25,7 @@ namespace AudioFlipper
         readonly ContextMenuStrip menu = new ContextMenuStrip();
         readonly Timer refreshTimer = new Timer { Interval = RefreshIntervalMilliseconds };
         readonly OsdForm popup = new OsdForm();
+        readonly TaskbarStrip strip;
 
         OutputStatus lastStatus;
         bool lastLightTaskbar;
@@ -30,6 +33,7 @@ namespace AudioFlipper
 
         public TrayApp()
         {
+            menu.ImageScalingSize = SystemInformation.SmallIconSize;
             menu.Items.Add("Loading…"); // Replaced every time the menu opens.
             menu.Opening += (sender, e) =>
             {
@@ -43,10 +47,22 @@ namespace AudioFlipper
             // so clicking twice skips ahead two devices.
             trayIcon.MouseDoubleClick += OnTrayIconClick;
 
+            strip = new TaskbarStrip(settings.TaskbarOffset);
+            strip.NextRequested += (sender, e) => SwitchToNext();
+            strip.MuteRequested += (sender, e) => ToggleMute();
+            strip.VolumeStepsRequested += (sender, steps) => ChangeVolume(steps * VolumeStepPercent);
+            strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
+            strip.OffsetChanged += (sender, e) =>
+            {
+                settings.TaskbarOffset = strip.Offset;
+                SaveSettings();
+            };
+
             refreshTimer.Tick += (sender, e) => RefreshStatus(false);
 
             RefreshStatus(false);
             trayIcon.Visible = true;
+            strip.SetShowOnTaskbar(settings.ShowOnTaskbar);
             refreshTimer.Start();
         }
 
@@ -101,10 +117,24 @@ namespace AudioFlipper
             }
         }
 
+        void ChangeVolume(int percentagePoints)
+        {
+            try
+            {
+                audio.ChangeDefaultOutputVolume(percentagePoints);
+                RefreshStatus(false);
+            }
+            catch (Exception ex)
+            {
+                popup.ShowMessage("Couldn't change volume", ex.Message);
+            }
+        }
+
         /// <summary>
-        /// Polls the default output and its volume, updating the icon and tooltip when anything
-        /// changed. The popup is shown when asked to, or when the output was changed elsewhere
-        /// (Windows settings, plugging in headphones, "AudioFlipper.exe --next").
+        /// Polls the default output and its volume, updating the widget, icon and tooltip when
+        /// anything changed. The popup is shown when asked to, or when the output was changed elsewhere
+        /// (Windows settings, plugging in headphones, "AudioFlipper.exe --next"), but only while the
+        /// taskbar widget isn't showing, since the widget already shows the same thing.
         /// </summary>
         void RefreshStatus(bool showPopup)
         {
@@ -126,13 +156,16 @@ namespace AudioFlipper
             bool deviceChanged = hasRefreshed && status?.Device.Id != lastStatus?.Device.Id;
 
             if (!hasRefreshed || lightTaskbar != lastLightTaskbar || !OutputStatus.AreEqual(status, lastStatus))
+            {
                 UpdateTrayIcon(status, lightTaskbar);
+                strip.SetStatus(status, lightTaskbar);
+            }
 
             lastStatus = status;
             lastLightTaskbar = lightTaskbar;
             hasRefreshed = true;
 
-            if ((showPopup || deviceChanged) && settings.ShowPopup)
+            if ((showPopup || deviceChanged) && settings.ShowPopup && !strip.Visible)
                 popup.ShowStatus(status);
         }
 
@@ -150,11 +183,19 @@ namespace AudioFlipper
                 return "AudioFlipper: no output device";
 
             string volume = status.Muted ? $"Muted ({status.VolumePercent}%)" : $"Volume {status.VolumePercent}%";
+            string name = status.Device.FullName;
             int maxNameLength = MaxTooltipLength - volume.Length - 1;
-            string name = status.Device.Name.Length <= maxNameLength
-                ? status.Device.Name
-                : status.Device.Name.Substring(0, maxNameLength - 1) + "…";
+            if (name.Length > maxNameLength)
+                name = name.Substring(0, maxNameLength - 1) + "…";
             return name + "\n" + volume;
+        }
+
+        void ShowMenuFromStrip()
+        {
+            // Like the tray icon does, take the foreground first so the menu closes when clicking elsewhere.
+            // Open it above the widget, which keeps itself on top and would otherwise cover the menu.
+            NativeMethods.SetForegroundWindow(strip.Handle);
+            menu.Show(new Point(Cursor.Position.X, strip.Top), ToolStripDropDownDirection.AboveRight);
         }
 
         void RebuildMenu()
@@ -162,7 +203,10 @@ namespace AudioFlipper
             ToolStripItem[] oldItems = menu.Items.Cast<ToolStripItem>().ToArray();
             menu.Items.Clear();
             foreach (ToolStripItem item in oldItems)
+            {
+                item.Image?.Dispose();
                 item.Dispose();
+            }
 
             List<AudioDevice> devices;
             string currentId;
@@ -184,27 +228,40 @@ namespace AudioFlipper
             foreach (AudioDevice device in devices)
             {
                 string id = device.Id;
-                string label = settings.IsExcluded(id) ? device.Name + "  (not in rotation)" : device.Name;
-                var item = new ToolStripMenuItem(label) { Checked = id == currentId };
+                string label = settings.IsExcluded(id) ? device.FullName + "  (not in rotation)" : device.FullName;
+                Bitmap icon = DeviceIcons.Get(device.IconPath, menu.ImageScalingSize.Width);
+                var item = new ToolStripMenuItem(label)
+                {
+                    Checked = id == currentId,
+                    // A copy, because menu items may dispose their image and the icon is cached.
+                    Image = icon != null ? new Bitmap(icon) : null,
+                };
                 item.Click += (sender, e) => SwitchTo(id);
                 menu.Items.Add(item);
             }
 
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Rename or change device icons…", null, (sender, e) => OpenSoundControlPanel());
+            menu.Items.Add("Sound settings…", null, (sender, e) => OpenSoundSettings());
 
+            menu.Items.Add(new ToolStripSeparator());
             var rotation = new ToolStripMenuItem("Include in click rotation") { Enabled = devices.Count > 0 };
             foreach (AudioDevice device in devices)
             {
                 string id = device.Id;
-                rotation.DropDownItems.Add(Toggle(device.Name, !settings.IsExcluded(id), include => settings.SetExcluded(id, !include)));
+                rotation.DropDownItems.Add(Toggle(device.FullName, !settings.IsExcluded(id), include => settings.SetExcluded(id, !include)));
             }
             menu.Items.Add(rotation);
+            menu.Items.Add(Toggle("Show on taskbar", settings.ShowOnTaskbar, value =>
+            {
+                settings.ShowOnTaskbar = value;
+                strip.SetShowOnTaskbar(value);
+            }));
             menu.Items.Add(Toggle("Also switch communications device", settings.SwitchCommunications, value => settings.SwitchCommunications = value));
             menu.Items.Add(Toggle("Show popup on change", settings.ShowPopup, value => settings.ShowPopup = value));
             menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
 
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Sound settings…", null, (sender, e) => OpenSoundSettings());
             menu.Items.Add("Exit", null, (sender, e) => ExitThread());
         }
 
@@ -226,21 +283,40 @@ namespace AudioFlipper
             return item;
         }
 
-        void OpenSoundSettings()
+        void SaveSettings()
         {
             try
             {
-                Process.Start("ms-settings:sound");
+                settings.Save();
             }
             catch (Exception ex)
             {
-                popup.ShowMessage("Couldn't open Sound settings", ex.Message);
+                popup.ShowMessage("Couldn't save settings", ex.Message);
+            }
+        }
+
+        // The classic Sound control panel (Playback tab), where a device can be renamed or given a
+        // different icon via right-click > Properties. AudioFlipper picks up changes within a second.
+        void OpenSoundControlPanel() => Launch("control.exe", "mmsys.cpl,,0", "Couldn't open the Sound control panel");
+
+        void OpenSoundSettings() => Launch("ms-settings:sound", null, "Couldn't open Sound settings");
+
+        void Launch(string fileName, string arguments, string errorTitle)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(fileName, arguments ?? "") { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                popup.ShowMessage(errorTitle, ex.Message);
             }
         }
 
         protected override void ExitThreadCore()
         {
             refreshTimer.Stop();
+            strip.SetShowOnTaskbar(false);
             trayIcon.Visible = false;
             base.ExitThreadCore();
         }
@@ -254,6 +330,7 @@ namespace AudioFlipper
                 trayIcon.Dispose();
                 menu.Dispose();
                 popup.Dispose();
+                strip.Dispose();
                 audio.Dispose();
             }
             base.Dispose(disposing);

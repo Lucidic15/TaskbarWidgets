@@ -14,19 +14,27 @@ namespace AudioFlipper.Audio
 
     internal sealed class AudioDevice
     {
-        public AudioDevice(string id, string name, DeviceKind kind)
+        public AudioDevice(string id, string name, string fullName, DeviceKind kind, string iconPath)
         {
             Id = id;
             Name = name;
+            FullName = fullName;
             Kind = kind;
+            IconPath = iconPath;
         }
 
         public string Id { get; }
 
-        /// <summary>Name as shown in Windows Sound settings, e.g. "Speakers (Realtek(R) Audio)".</summary>
+        /// <summary>The device's own name, which can be changed in the Sound control panel, e.g. "Headset".</summary>
         public string Name { get; }
 
+        /// <summary>Name plus the audio hardware, e.g. "Headset (4- USB Advanced Audio Device)".</summary>
+        public string FullName { get; }
+
         public DeviceKind Kind { get; }
+
+        /// <summary>The icon chosen in the Sound control panel, e.g. "%SystemRoot%\System32\mmres.dll,-3011".</summary>
+        public string IconPath { get; }
     }
 
     internal sealed class OutputStatus
@@ -50,6 +58,8 @@ namespace AudioFlipper.Audio
                 return a == b;
             return a.Device.Id == b.Device.Id
                 && a.Device.Name == b.Device.Name
+                && a.Device.FullName == b.Device.FullName
+                && a.Device.IconPath == b.Device.IconPath
                 && a.VolumePercent == b.VolumePercent
                 && a.Muted == b.Muted;
         }
@@ -68,15 +78,17 @@ namespace AudioFlipper.Audio
         const int ENotFound = unchecked((int)0x80070490);
 
         static readonly PropertyKey FriendlyNameKey = new PropertyKey(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 14);
+        static readonly PropertyKey DeviceDescriptionKey = new PropertyKey(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 2);
+        static readonly PropertyKey IconPathKey = new PropertyKey(new Guid("259ABFFC-50A7-47CE-AF08-68C9A7D73366"), 12);
         static readonly PropertyKey FormFactorKey = new PropertyKey(new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), 0);
         static readonly Guid AudioEndpointVolumeId = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
 
         readonly IMMDeviceEnumerator enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
 
-        // The default output and its volume control are kept between polls and
-        // reloaded only when the default output changes.
-        AudioDevice cachedDevice;
-        IAudioEndpointVolume cachedVolume;
+        // The default output's volume control is kept between polls and only reactivated when
+        // the default output changes.
+        string volumeDeviceId;
+        IAudioEndpointVolume volume;
 
         /// <summary>Enabled, connected output devices, sorted by name.</summary>
         public List<AudioDevice> GetActiveOutputDevices()
@@ -104,17 +116,20 @@ namespace AudioFlipper.Audio
                 Release(collection);
             }
 
-            devices.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase));
+            devices.Sort((a, b) =>
+            {
+                int byName = string.Compare(a.Name, b.Name, StringComparison.CurrentCultureIgnoreCase);
+                return byName != 0 ? byName : string.Compare(a.FullName, b.FullName, StringComparison.CurrentCultureIgnoreCase);
+            });
             return devices;
         }
 
         /// <summary>ID of the default output device, or null if there is none.</summary>
         public string GetDefaultOutputDeviceId()
         {
-            int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Console, out IMMDevice device);
-            if (hr == ENotFound)
+            IMMDevice device = GetDefaultOutputDevice();
+            if (device == null)
                 return null;
-            Marshal.ThrowExceptionForHR(hr);
             try
             {
                 device.GetId(out string id);
@@ -129,30 +144,39 @@ namespace AudioFlipper.Audio
         /// <summary>The default output device with its volume, or null if there is none.</summary>
         public OutputStatus GetDefaultOutputStatus()
         {
-            string id = GetDefaultOutputDeviceId();
-            if (id == null)
+            IMMDevice device = GetDefaultOutputDevice();
+            if (device == null)
             {
-                ClearCache();
+                ReleaseVolume();
                 return null;
-            }
-
-            if (cachedDevice == null || cachedDevice.Id != id)
-            {
-                ClearCache();
-                LoadCache(id);
             }
 
             try
             {
-                cachedVolume.GetMasterVolumeLevelScalar(out float level);
-                cachedVolume.GetMute(out bool muted);
-                return new OutputStatus(cachedDevice, (int)Math.Round(level * 100), muted);
+                // Name and icon are re-read every time so renames in Windows show up straight away.
+                AudioDevice info = ReadDevice(device);
+                if (volume == null || volumeDeviceId != info.Id)
+                {
+                    ReleaseVolume();
+                    Guid iid = AudioEndpointVolumeId;
+                    device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out object endpointVolume);
+                    volume = (IAudioEndpointVolume)endpointVolume;
+                    volumeDeviceId = info.Id;
+                }
+
+                volume.GetMasterVolumeLevelScalar(out float level);
+                volume.GetMute(out bool muted);
+                return new OutputStatus(info, (int)Math.Round(level * 100), muted);
             }
             catch (COMException)
             {
-                // Usually the device was unplugged between calls; reload on the next poll.
-                ClearCache();
+                // Usually the device was unplugged between calls; start over on the next poll.
+                ReleaseVolume();
                 throw;
+            }
+            finally
+            {
+                Release(device);
             }
         }
 
@@ -176,39 +200,48 @@ namespace AudioFlipper.Audio
         {
             if (GetDefaultOutputStatus() == null)
                 return;
-            cachedVolume.GetMute(out bool muted);
+            volume.GetMute(out bool muted);
             Guid eventContext = Guid.Empty;
-            cachedVolume.SetMute(!muted, ref eventContext);
+            volume.SetMute(!muted, ref eventContext);
+        }
+
+        /// <summary>Changes the default output's volume by whole percentage points, unmuting when turning it up.</summary>
+        public void ChangeDefaultOutputVolume(int percentagePoints)
+        {
+            if (GetDefaultOutputStatus() == null)
+                return;
+            volume.GetMasterVolumeLevelScalar(out float level);
+            int percent = Math.Max(0, Math.Min(100, (int)Math.Round(level * 100) + percentagePoints));
+            Guid eventContext = Guid.Empty;
+            volume.SetMasterVolumeLevelScalar(percent / 100f, ref eventContext);
+            if (percentagePoints > 0)
+            {
+                volume.GetMute(out bool muted);
+                if (muted)
+                    volume.SetMute(false, ref eventContext);
+            }
         }
 
         public void Dispose()
         {
-            ClearCache();
+            ReleaseVolume();
             Release(enumerator);
         }
 
-        void LoadCache(string id)
+        IMMDevice GetDefaultOutputDevice()
         {
-            enumerator.GetDevice(id, out IMMDevice device);
-            try
-            {
-                AudioDevice info = ReadDevice(device);
-                Guid iid = AudioEndpointVolumeId;
-                device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out object volume);
-                cachedVolume = (IAudioEndpointVolume)volume;
-                cachedDevice = info;
-            }
-            finally
-            {
-                Release(device);
-            }
+            int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Console, out IMMDevice device);
+            if (hr == ENotFound)
+                return null;
+            Marshal.ThrowExceptionForHR(hr);
+            return device;
         }
 
-        void ClearCache()
+        void ReleaseVolume()
         {
-            Release(cachedVolume);
-            cachedVolume = null;
-            cachedDevice = null;
+            Release(volume);
+            volume = null;
+            volumeDeviceId = null;
         }
 
         static AudioDevice ReadDevice(IMMDevice device)
@@ -217,8 +250,16 @@ namespace AudioFlipper.Audio
             device.OpenPropertyStore(StgmRead, out IPropertyStore store);
             try
             {
-                string name = ReadString(store, FriendlyNameKey) ?? "Unknown device";
-                return new AudioDevice(id, name, KindFromFormFactor(ReadUInt(store, FormFactorKey)));
+                string fullName = ReadString(store, FriendlyNameKey);
+                string name = ReadString(store, DeviceDescriptionKey);
+                if (string.IsNullOrWhiteSpace(name))
+                    name = fullName ?? "Unknown device";
+                return new AudioDevice(
+                    id,
+                    name,
+                    fullName ?? name,
+                    KindFromFormFactor(ReadUInt(store, FormFactorKey)),
+                    ReadString(store, IconPathKey));
             }
             finally
             {
