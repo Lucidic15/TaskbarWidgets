@@ -51,6 +51,7 @@ namespace AudioFlipper
             strip.NextRequested += (sender, e) => SwitchToNext();
             strip.MuteRequested += (sender, e) => ToggleMute();
             strip.VolumeStepsRequested += (sender, steps) => ChangeVolume(steps * VolumeStepPercent);
+            strip.VolumeChangeRequested += (sender, percent) => SetVolume(percent);
             strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
             strip.OffsetChanged += (sender, e) =>
             {
@@ -114,6 +115,19 @@ namespace AudioFlipper
             catch (Exception ex)
             {
                 popup.ShowMessage("Couldn't toggle mute", ex.Message);
+            }
+        }
+
+        void SetVolume(int percent)
+        {
+            try
+            {
+                audio.SetDefaultOutputVolume(percent);
+                RefreshStatus(false);
+            }
+            catch (Exception ex)
+            {
+                popup.ShowMessage("Couldn't change volume", ex.Message);
             }
         }
 

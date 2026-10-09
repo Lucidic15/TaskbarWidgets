@@ -11,7 +11,7 @@ namespace AudioFlipper
     /// A taskbar button in the style of the Windows weather widget that always shows the active
     /// output's icon, name and volume.
     /// Click to switch output, scroll to change volume, middle-click to mute, right-click for the menu,
-    /// and drag to move it along the taskbar.
+    /// and drag to move it along the taskbar. Hovering opens a flyout with a volume slider.
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
@@ -27,12 +27,14 @@ namespace AudioFlipper
         const int MinLogicalWidth = 140;
         const int MaxLogicalWidth = 260;
         const int PlacementIntervalMilliseconds = 250;
+        const int HoverDelayMilliseconds = 400;
         const int WheelNotch = 120;
 
         readonly float dpiScale;
         readonly Font nameFont;
         readonly Font volumeFont;
-        readonly ToolTip toolTip = new ToolTip { ShowAlways = true };
+        readonly VolumeFlyout flyout = new VolumeFlyout();
+        readonly Timer hoverTimer = new Timer { Interval = HoverDelayMilliseconds };
         readonly Timer placementTimer = new Timer { Interval = PlacementIntervalMilliseconds };
         readonly NativeMethods.WinEventProc onForegroundChanged; // Kept in a field so the GC doesn't collect it.
         IntPtr foregroundHook;
@@ -48,7 +50,6 @@ namespace AudioFlipper
         int dragStartCursorX;
         int dragStartOffset;
         int wheelRemainder;
-        string toolTipText;
         string measuredName;
         int measuredWidth;
 
@@ -69,6 +70,16 @@ namespace AudioFlipper
 
             placementTimer.Tick += (sender, e) => UpdatePlacement();
             onForegroundChanged = (hook, eventType, window, objectId, childId, threadId, time) => UpdatePlacement();
+
+            hoverTimer.Tick += (sender, e) =>
+            {
+                hoverTimer.Stop();
+                if (Visible && !pressed && Bounds.Contains(Cursor.Position))
+                    flyout.ShowAbove(Bounds);
+            };
+            flyout.VolumeChangeRequested += (sender, percent) => VolumeChangeRequested?.Invoke(this, percent);
+            flyout.VolumeStepsRequested += (sender, notches) => VolumeStepsRequested?.Invoke(this, notches);
+            flyout.MuteRequested += (sender, e) => MuteRequested?.Invoke(this, e);
         }
 
         public event EventHandler NextRequested;
@@ -77,6 +88,9 @@ namespace AudioFlipper
 
         /// <summary>Raised on mouse-wheel scrolling with the number of notches (positive is up).</summary>
         public event EventHandler<int> VolumeStepsRequested;
+
+        /// <summary>Raised from the flyout's slider with the new volume in percent.</summary>
+        public event EventHandler<int> VolumeChangeRequested;
 
         public event EventHandler MenuRequested;
 
@@ -121,7 +135,7 @@ namespace AudioFlipper
         {
             this.status = status;
             this.lightTaskbar = lightTaskbar;
-            UpdateToolTip();
+            flyout.SetStatus(status);
             UpdatePlacement(true);
         }
 
@@ -138,6 +152,7 @@ namespace AudioFlipper
             {
                 if (Visible)
                     Hide();
+                flyout.Hide();
                 return;
             }
 
@@ -154,6 +169,7 @@ namespace AudioFlipper
             }
             if (!Visible)
                 Show();
+            flyout.SetAnchor(Bounds);
 
             // The taskbar comes to the front whenever it's clicked; stay above it.
             NativeMethods.SetWindowPos(Handle, NativeMethods.HwndTopmost, 0, 0, 0, 0,
@@ -238,23 +254,13 @@ namespace AudioFlipper
             }
         }
 
-        void UpdateToolTip()
-        {
-            string text = status == null
-                ? "No output device"
-                : status.Device.FullName + "\n" + (status.Muted ? "Muted" : "Volume " + status.VolumePercent + "%")
-                    + "\nClick: next output · Scroll: volume · Drag: move";
-            if (text == toolTipText)
-                return;
-            toolTipText = text;
-            toolTip.SetToolTip(this, text);
-        }
-
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
             hovered = true;
             Render();
+            hoverTimer.Stop();
+            hoverTimer.Start();
         }
 
         protected override void OnMouseLeave(EventArgs e)
@@ -262,6 +268,7 @@ namespace AudioFlipper
             base.OnMouseLeave(e);
             hovered = false;
             Render();
+            hoverTimer.Stop(); // An open flyout closes itself once the mouse is away from both.
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -284,6 +291,11 @@ namespace AudioFlipper
             int distance = Cursor.Position.X - dragStartCursorX;
             if (!dragging && Math.Abs(distance) < SystemInformation.DragSize.Width)
                 return;
+            if (!dragging)
+            {
+                hoverTimer.Stop();
+                flyout.Hide();
+            }
             dragging = true;
             offset = Math.Max(0, dragStartOffset + distance);
             UpdatePlacement();
@@ -313,6 +325,8 @@ namespace AudioFlipper
                     MuteRequested?.Invoke(this, EventArgs.Empty);
                     break;
                 case MouseButtons.Right:
+                    hoverTimer.Stop();
+                    flyout.Hide();
                     MenuRequested?.Invoke(this, EventArgs.Empty);
                     break;
             }
@@ -335,7 +349,8 @@ namespace AudioFlipper
             {
                 Unhook();
                 placementTimer.Dispose();
-                toolTip.Dispose();
+                hoverTimer.Dispose();
+                flyout.Dispose();
                 nameFont.Dispose();
                 volumeFont.Dispose();
             }

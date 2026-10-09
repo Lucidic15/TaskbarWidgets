@@ -14,10 +14,11 @@ namespace AudioFlipper.Audio
 
     internal sealed class AudioDevice
     {
-        public AudioDevice(string id, string name, string fullName, DeviceKind kind, string iconPath)
+        public AudioDevice(string id, string name, string description, string fullName, DeviceKind kind, string iconPath)
         {
             Id = id;
             Name = name;
+            Description = description;
             FullName = fullName;
             Kind = kind;
             IconPath = iconPath;
@@ -27,6 +28,9 @@ namespace AudioFlipper.Audio
 
         /// <summary>The device's own name, which can be changed in the Sound control panel, e.g. "Headset".</summary>
         public string Name { get; }
+
+        /// <summary>The audio hardware, e.g. "4- USB Advanced Audio Device".</summary>
+        public string Description { get; }
 
         /// <summary>Name plus the audio hardware, e.g. "Headset (4- USB Advanced Audio Device)".</summary>
         public string FullName { get; }
@@ -58,6 +62,7 @@ namespace AudioFlipper.Audio
                 return a == b;
             return a.Device.Id == b.Device.Id
                 && a.Device.Name == b.Device.Name
+                && a.Device.Description == b.Device.Description
                 && a.Device.FullName == b.Device.FullName
                 && a.Device.IconPath == b.Device.IconPath
                 && a.VolumePercent == b.VolumePercent
@@ -78,7 +83,10 @@ namespace AudioFlipper.Audio
         const int ENotFound = unchecked((int)0x80070490);
 
         static readonly PropertyKey FriendlyNameKey = new PropertyKey(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 14);
-        static readonly PropertyKey DeviceDescriptionKey = new PropertyKey(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 2);
+        // PKEY_Device_DeviceDesc: for an endpoint, its own name ("Headset").
+        static readonly PropertyKey EndpointNameKey = new PropertyKey(new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), 2);
+        // PKEY_DeviceInterface_FriendlyName: the audio hardware ("4- USB Advanced Audio Device").
+        static readonly PropertyKey InterfaceFriendlyNameKey = new PropertyKey(new Guid("026E516E-B814-414B-83CD-856D6FEF4822"), 2);
         static readonly PropertyKey IconPathKey = new PropertyKey(new Guid("259ABFFC-50A7-47CE-AF08-68C9A7D73366"), 12);
         static readonly PropertyKey FormFactorKey = new PropertyKey(new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), 0);
         static readonly Guid AudioEndpointVolumeId = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
@@ -208,13 +216,23 @@ namespace AudioFlipper.Audio
         /// <summary>Changes the default output's volume by whole percentage points, unmuting when turning it up.</summary>
         public void ChangeDefaultOutputVolume(int percentagePoints)
         {
-            if (GetDefaultOutputStatus() == null)
-                return;
-            volume.GetMasterVolumeLevelScalar(out float level);
-            int percent = Math.Max(0, Math.Min(100, (int)Math.Round(level * 100) + percentagePoints));
+            OutputStatus status = GetDefaultOutputStatus();
+            if (status != null)
+                SetVolume(status.VolumePercent + percentagePoints, unmute: percentagePoints > 0);
+        }
+
+        /// <summary>Sets the default output's volume, unmuting it like the Windows volume slider does.</summary>
+        public void SetDefaultOutputVolume(int percent)
+        {
+            if (GetDefaultOutputStatus() != null)
+                SetVolume(percent, unmute: percent > 0);
+        }
+
+        void SetVolume(int percent, bool unmute)
+        {
             Guid eventContext = Guid.Empty;
-            volume.SetMasterVolumeLevelScalar(percent / 100f, ref eventContext);
-            if (percentagePoints > 0)
+            volume.SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, percent)) / 100f, ref eventContext);
+            if (unmute)
             {
                 volume.GetMute(out bool muted);
                 if (muted)
@@ -251,12 +269,13 @@ namespace AudioFlipper.Audio
             try
             {
                 string fullName = ReadString(store, FriendlyNameKey);
-                string name = ReadString(store, DeviceDescriptionKey);
+                string name = ReadString(store, EndpointNameKey);
                 if (string.IsNullOrWhiteSpace(name))
                     name = fullName ?? "Unknown device";
                 return new AudioDevice(
                     id,
                     name,
+                    ReadString(store, InterfaceFriendlyNameKey),
                     fullName ?? name,
                     KindFromFormFactor(ReadUInt(store, FormFactorKey)),
                     ReadString(store, IconPathKey));
