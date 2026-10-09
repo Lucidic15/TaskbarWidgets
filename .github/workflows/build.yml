@@ -19,26 +19,3 @@ jobs:
         with:
           name: AudioFlipper
           path: src/AudioFlipper/bin/Release/net48/AudioFlipper.exe
-
-  release:
-    # Pushing a version tag (for example v1.0.0) publishes a GitHub release with the exe attached,
-    # using .github/release-notes/<tag>.md as the description when it exists.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: AudioFlipper
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
-          if [ -f "$notes" ]; then notes_args=(--notes-file "$notes"); else notes_args=(--generate-notes); fi
-          gh release create "$GITHUB_REF_NAME" AudioFlipper.exe --title "AudioFlipper ${GITHUB_REF_NAME#v}" "${notes_args[@]}"

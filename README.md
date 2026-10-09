@@ -71,9 +71,10 @@ else to install.
 
 Use **Start with Windows** in the right-click menu to launch it at sign-in, and **Exit** to close it.
 
-To publish a new release, set `<Version>` in `src/AudioFlipper/AudioFlipper.csproj`, add release
-notes as `.github/release-notes/v<version>.md`, and push a `v<version>` tag. The **Build** workflow
-builds the exe and publishes the release with it attached.
+To publish a new release, set `<Version>` in `src/AudioFlipper/AudioFlipper.csproj` and add release
+notes as `.github/release-notes/v<version>.md`. Then on the **Actions** tab, choose **Release →
+Run workflow**, pick the branch and enter the version (or push a `v<version>` tag). The workflow
+builds the exe, creates the tag and publishes the release with the exe attached.
 
 ## Which devices are in the rotation
 
