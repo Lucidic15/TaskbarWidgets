@@ -77,7 +77,7 @@ namespace AudioFlipper
                 if (Visible && !pressed && Bounds.Contains(Cursor.Position))
                     flyout.ShowAbove(Bounds);
             };
-            flyout.VolumeChangeRequested += (sender, percent) => VolumeChangeRequested?.Invoke(this, percent);
+            flyout.VolumeChangeRequested += (sender, level) => VolumeChangeRequested?.Invoke(this, level);
             flyout.VolumeStepsRequested += (sender, notches) => VolumeStepsRequested?.Invoke(this, notches);
             flyout.MuteRequested += (sender, e) => MuteRequested?.Invoke(this, e);
         }
@@ -89,8 +89,8 @@ namespace AudioFlipper
         /// <summary>Raised on mouse-wheel scrolling with the number of notches (positive is up).</summary>
         public event EventHandler<int> VolumeStepsRequested;
 
-        /// <summary>Raised from the flyout's slider with the new volume in percent.</summary>
-        public event EventHandler<int> VolumeChangeRequested;
+        /// <summary>Raised from the flyout's slider with the new volume from 0 to 1.</summary>
+        public event EventHandler<float> VolumeChangeRequested;
 
         public event EventHandler MenuRequested;
 

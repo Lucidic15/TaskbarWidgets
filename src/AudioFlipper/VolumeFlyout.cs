@@ -9,11 +9,12 @@ namespace AudioFlipper
     /// <summary>
     /// Flyout shown above the taskbar widget while hovering it, like the Windows 11 volume flyout:
     /// the device's name, a volume slider, and the device icon as a mute button. It stays open while
-    /// the mouse is over the widget or the flyout and closes shortly after it leaves both.
+    /// the mouse is on its way up from the widget, and closes as soon as the mouse leaves the flyout.
     /// </summary>
     internal sealed class VolumeFlyout : PopupWindow
     {
-        const int HideDelayMilliseconds = 350;
+        // How long the mouse may be off both the widget and the flyout on its way up to the flyout.
+        const int ApproachGraceMilliseconds = 350;
         const int WheelNotch = 120;
 
         readonly Timer hideCheckTimer = new Timer { Interval = 100 };
@@ -23,9 +24,14 @@ namespace AudioFlipper
 
         OutputStatus status;
         Rectangle anchor;
-        int lastCursorInside;
+        int lastCursorNear;
+        bool cursorEntered; // Once the mouse has been in the flyout, leaving it closes the flyout.
         bool draggingSlider;
-        int dragPercent;
+        float dragLevel;
+        // After a drag, keep showing where the slider was released until the new volume comes back
+        // from Windows, so the thumb doesn't jump back for a moment.
+        bool holdingDragLevel;
+        int releasedAt;
         bool hoveringSlider;
         bool hoveringMute;
         bool pressingMute;
@@ -37,8 +43,8 @@ namespace AudioFlipper
             hideCheckTimer.Tick += (sender, e) => HideWhenCursorLeaves();
         }
 
-        /// <summary>Raised while dragging or clicking the slider, with the new volume in percent.</summary>
-        public event EventHandler<int> VolumeChangeRequested;
+        /// <summary>Raised while dragging or clicking the slider, with the new volume from 0 to 1.</summary>
+        public event EventHandler<float> VolumeChangeRequested;
 
         /// <summary>Raised on mouse-wheel scrolling with the number of notches (positive is up).</summary>
         public event EventHandler<int> VolumeStepsRequested;
@@ -50,10 +56,13 @@ namespace AudioFlipper
         {
             this.anchor = anchor;
             PositionAboveAnchor();
-            lastCursorInside = Environment.TickCount;
+            lastCursorNear = Environment.TickCount;
             Invalidate();
             if (!Visible)
+            {
+                cursorEntered = false;
                 Show();
+            }
             hideCheckTimer.Start();
         }
 
@@ -70,6 +79,8 @@ namespace AudioFlipper
         public void SetStatus(OutputStatus status)
         {
             this.status = status;
+            if (holdingDragLevel && status != null && Math.Abs(status.VolumeLevel - dragLevel) < 0.005f)
+                holdingDragLevel = false;
             if (Visible)
                 Invalidate();
         }
@@ -81,6 +92,7 @@ namespace AudioFlipper
                 return;
             hideCheckTimer.Stop();
             draggingSlider = false;
+            holdingDragLevel = false;
             pressingMute = false;
         }
 
@@ -93,18 +105,34 @@ namespace AudioFlipper
             Location = new Point(x, y);
         }
 
+        // Backs up OnMouseLeave, which Windows doesn't always send, and handles the trip up from the widget.
         void HideWhenCursorLeaves()
         {
+            if (draggingSlider)
+                return;
+
             Point cursor = Cursor.Position;
-            // The gap between the widget and the flyout counts as inside, so the mouse can cross it.
+            if (Bounds.Contains(cursor))
+            {
+                cursorEntered = true;
+                return;
+            }
+            if (cursorEntered)
+            {
+                Hide();
+                return;
+            }
+
+            // Not in the flyout yet: the widget and the gap above it count as on the way.
             Rectangle gap = Rectangle.FromLTRB(anchor.Left, Bottom, anchor.Right, Math.Max(Bottom, anchor.Top));
-            if (draggingSlider || Bounds.Contains(cursor) || anchor.Contains(cursor) || gap.Contains(cursor))
-                lastCursorInside = Environment.TickCount;
-            else if (Environment.TickCount - lastCursorInside > HideDelayMilliseconds)
+            if (anchor.Contains(cursor) || gap.Contains(cursor))
+                lastCursorNear = Environment.TickCount;
+            else if (Environment.TickCount - lastCursorNear > ApproachGraceMilliseconds)
                 Hide();
         }
 
-        int DisplayedPercent => draggingSlider ? dragPercent : status?.VolumePercent ?? 0;
+        float DisplayedLevel =>
+            draggingSlider || (holdingDragLevel && Environment.TickCount - releasedAt < 500) ? dragLevel : status?.VolumeLevel ?? 0f;
 
         Rectangle MuteButtonBounds => new Rectangle(Px(10), Px(58), Px(36), Px(36));
 
@@ -117,13 +145,14 @@ namespace AudioFlipper
         void SetVolumeFromX(int x)
         {
             RectangleF track = TrackBounds;
-            float fraction = Math.Max(0f, Math.Min(1f, (x - track.X) / track.Width));
-            int percent = (int)Math.Round(fraction * 100);
-            if (percent == dragPercent)
+            float level = Math.Max(0f, Math.Min(1f, (x - track.X) / track.Width));
+            if (level == dragLevel)
                 return;
-            dragPercent = percent;
+            dragLevel = level;
+            // Repaint right away, before changing the volume, so the thumb keeps up with the mouse.
             Invalidate();
-            VolumeChangeRequested?.Invoke(this, percent);
+            Update();
+            VolumeChangeRequested?.Invoke(this, level);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -140,7 +169,7 @@ namespace AudioFlipper
             else if (SliderHitBounds.Contains(e.Location))
             {
                 draggingSlider = true;
-                dragPercent = status.VolumePercent;
+                dragLevel = status.VolumeLevel;
                 SetVolumeFromX(e.X);
                 Invalidate();
             }
@@ -174,7 +203,11 @@ namespace AudioFlipper
             if (draggingSlider)
             {
                 draggingSlider = false;
+                holdingDragLevel = true;
+                releasedAt = Environment.TickCount;
                 Invalidate();
+                if (!ClientRectangle.Contains(e.Location))
+                    Hide(); // Released outside the flyout.
             }
             else if (pressingMute)
             {
@@ -185,12 +218,21 @@ namespace AudioFlipper
             }
         }
 
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+            cursorEntered = true;
+        }
+
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
             hoveringMute = false;
             hoveringSlider = false;
-            Invalidate();
+            if (draggingSlider)
+                Invalidate();
+            else
+                Hide();
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -239,13 +281,13 @@ namespace AudioFlipper
                 colors.Foreground);
 
             // Slider, drawn like the Windows 11 one: an accent fill and a ring with a dot that grows on hover.
-            int percent = DisplayedPercent;
+            float level = DisplayedLevel;
             RectangleF track = TrackBounds;
             Color fill = status.Muted && !draggingSlider ? colors.Secondary : colors.Accent;
             Shapes.FillPill(graphics, colors.Track, track);
-            Shapes.FillPill(graphics, fill, new RectangleF(track.X, track.Y, track.Width * percent / 100f, track.Height));
+            Shapes.FillPill(graphics, fill, new RectangleF(track.X, track.Y, track.Width * level, track.Height));
 
-            var center = new PointF(track.X + track.Width * percent / 100f, track.Y + track.Height / 2);
+            var center = new PointF(track.X + track.Width * level, track.Y + track.Height / 2);
             float ring = Px(10);
             float dot = draggingSlider ? Px(5) : hoveringSlider ? Px(7) : Px(6);
             using (var ringBrush = new SolidBrush(colors.ThumbRing))
@@ -255,7 +297,7 @@ namespace AudioFlipper
             using (var dotBrush = new SolidBrush(fill))
                 graphics.FillEllipse(dotBrush, center.X - dot, center.Y - dot, dot * 2, dot * 2);
 
-            TextRenderer.DrawText(graphics, percent.ToString(), valueFont, ValueBounds, colors.Foreground, flags | TextFormatFlags.Right);
+            TextRenderer.DrawText(graphics, ((int)Math.Round(level * 100)).ToString(), valueFont, ValueBounds, colors.Foreground, flags | TextFormatFlags.Right);
 
             DrawBorder(graphics, colors.Border);
         }

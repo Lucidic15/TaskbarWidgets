@@ -8,7 +8,7 @@ device's icon, its name and the volume. Click it to switch to the next output yo
 **On the taskbar widget:**
 
 - **Hover**: a flyout opens above it with the device's name, a volume slider, and the device icon
-  as a mute button, like the Windows 11 volume flyout. It closes when you move the mouse away.
+  as a mute button, like the Windows 11 volume flyout. It closes as soon as the mouse leaves it.
 - **Left-click**: switch to the next output device.
 - **Scroll**: turn the volume up or down.
 - **Middle-click**: mute / unmute.

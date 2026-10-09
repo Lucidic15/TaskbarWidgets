@@ -43,16 +43,19 @@ namespace AudioFlipper.Audio
 
     internal sealed class OutputStatus
     {
-        public OutputStatus(AudioDevice device, int volumePercent, bool muted)
+        public OutputStatus(AudioDevice device, float volumeLevel, bool muted)
         {
             Device = device;
-            VolumePercent = volumePercent;
+            VolumeLevel = volumeLevel;
             Muted = muted;
         }
 
         public AudioDevice Device { get; }
 
-        public int VolumePercent { get; }
+        /// <summary>Volume from 0 to 1.</summary>
+        public float VolumeLevel { get; }
+
+        public int VolumePercent => (int)Math.Round(VolumeLevel * 100);
 
         public bool Muted { get; }
 
@@ -65,7 +68,7 @@ namespace AudioFlipper.Audio
                 && a.Device.Description == b.Device.Description
                 && a.Device.FullName == b.Device.FullName
                 && a.Device.IconPath == b.Device.IconPath
-                && a.VolumePercent == b.VolumePercent
+                && a.VolumeLevel == b.VolumeLevel
                 && a.Muted == b.Muted;
         }
     }
@@ -174,7 +177,7 @@ namespace AudioFlipper.Audio
 
                 volume.GetMasterVolumeLevelScalar(out float level);
                 volume.GetMute(out bool muted);
-                return new OutputStatus(info, (int)Math.Round(level * 100), muted);
+                return new OutputStatus(info, level, muted);
             }
             catch (COMException)
             {
@@ -218,20 +221,33 @@ namespace AudioFlipper.Audio
         {
             OutputStatus status = GetDefaultOutputStatus();
             if (status != null)
-                SetVolume(status.VolumePercent + percentagePoints, unmute: percentagePoints > 0);
+                SetVolume((status.VolumePercent + percentagePoints) / 100f, unmute: percentagePoints > 0);
         }
 
-        /// <summary>Sets the default output's volume, unmuting it like the Windows volume slider does.</summary>
-        public void SetDefaultOutputVolume(int percent)
+        /// <summary>
+        /// Sets the default output's volume (0 to 1), unmuting it like the Windows volume slider does.
+        /// Called for every slider movement, so it reuses the volume control from the last poll
+        /// instead of looking the device up again.
+        /// </summary>
+        public void SetDefaultOutputVolume(float level)
         {
-            if (GetDefaultOutputStatus() != null)
-                SetVolume(percent, unmute: percent > 0);
+            if (volume == null && GetDefaultOutputStatus() == null)
+                return;
+            try
+            {
+                SetVolume(level, unmute: level > 0);
+            }
+            catch (COMException)
+            {
+                ReleaseVolume(); // The device went away; the next poll picks up the new default.
+                throw;
+            }
         }
 
-        void SetVolume(int percent, bool unmute)
+        void SetVolume(float level, bool unmute)
         {
             Guid eventContext = Guid.Empty;
-            volume.SetMasterVolumeLevelScalar(Math.Max(0, Math.Min(100, percent)) / 100f, ref eventContext);
+            volume.SetMasterVolumeLevelScalar(Math.Max(0f, Math.Min(1f, level)), ref eventContext);
             if (unmute)
             {
                 volume.GetMute(out bool muted);

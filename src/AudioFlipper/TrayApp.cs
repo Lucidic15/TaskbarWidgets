@@ -18,21 +18,26 @@ namespace AudioFlipper
         const int RefreshIntervalMilliseconds = 500;
         const int MaxTooltipLength = 63; // NotifyIcon.Text limit on .NET Framework.
         const int VolumeStepPercent = 2; // Same step as the Windows volume flyout.
+        const int VolumeRefreshMilliseconds = 30; // How often the widget catches up while the volume is changing.
+        const int TooltipUpdateMilliseconds = 250;
 
         readonly AudioDeviceManager audio = new AudioDeviceManager();
         readonly Settings settings = Settings.Load();
         readonly NotifyIcon trayIcon = new NotifyIcon();
         readonly ContextMenuStrip menu = new ContextMenuStrip();
         readonly Timer refreshTimer = new Timer { Interval = RefreshIntervalMilliseconds };
+        readonly Timer volumeRefreshTimer = new Timer { Interval = VolumeRefreshMilliseconds };
         readonly OsdForm popup = new OsdForm();
         readonly TaskbarStrip strip;
 
         OutputStatus lastStatus;
         bool lastLightTaskbar;
         bool hasRefreshed;
+        int lastTooltipUpdate;
 
         public TrayApp()
         {
+            lastTooltipUpdate = Environment.TickCount - TooltipUpdateMilliseconds;
             menu.ImageScalingSize = SystemInformation.SmallIconSize;
             menu.Items.Add("Loading…"); // Replaced every time the menu opens.
             menu.Opening += (sender, e) =>
@@ -51,7 +56,7 @@ namespace AudioFlipper
             strip.NextRequested += (sender, e) => SwitchToNext();
             strip.MuteRequested += (sender, e) => ToggleMute();
             strip.VolumeStepsRequested += (sender, steps) => ChangeVolume(steps * VolumeStepPercent);
-            strip.VolumeChangeRequested += (sender, percent) => SetVolume(percent);
+            strip.VolumeChangeRequested += (sender, level) => SetVolume(level);
             strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
             strip.OffsetChanged += (sender, e) =>
             {
@@ -60,6 +65,11 @@ namespace AudioFlipper
             };
 
             refreshTimer.Tick += (sender, e) => RefreshStatus(false);
+            volumeRefreshTimer.Tick += (sender, e) =>
+            {
+                volumeRefreshTimer.Stop();
+                RefreshStatus(false);
+            };
 
             RefreshStatus(false);
             trayIcon.Visible = true;
@@ -118,12 +128,12 @@ namespace AudioFlipper
             }
         }
 
-        void SetVolume(int percent)
+        void SetVolume(float level)
         {
             try
             {
-                audio.SetDefaultOutputVolume(percent);
-                RefreshStatus(false);
+                audio.SetDefaultOutputVolume(level);
+                RefreshSoon();
             }
             catch (Exception ex)
             {
@@ -136,12 +146,20 @@ namespace AudioFlipper
             try
             {
                 audio.ChangeDefaultOutputVolume(percentagePoints);
-                RefreshStatus(false);
+                RefreshSoon();
             }
             catch (Exception ex)
             {
                 popup.ShowMessage("Couldn't change volume", ex.Message);
             }
+        }
+
+        // Slider drags and fast scrolling change the volume dozens of times a second; refresh the
+        // widget at a steady rate instead of after every change, so the slider stays smooth.
+        void RefreshSoon()
+        {
+            if (!volumeRefreshTimer.Enabled)
+                volumeRefreshTimer.Start();
         }
 
         /// <summary>
@@ -169,11 +187,12 @@ namespace AudioFlipper
             bool lightTaskbar = Theme.TaskbarUsesLightTheme();
             bool deviceChanged = hasRefreshed && status?.Device.Id != lastStatus?.Device.Id;
 
-            if (!hasRefreshed || lightTaskbar != lastLightTaskbar || !OutputStatus.AreEqual(status, lastStatus))
-            {
-                UpdateTrayIcon(status, lightTaskbar);
+            bool themeChanged = !hasRefreshed || lightTaskbar != lastLightTaskbar;
+            if (themeChanged || !OutputStatus.AreEqual(status, lastStatus))
                 strip.SetStatus(status, lightTaskbar);
-            }
+            if (themeChanged || TrayIconDiffers(status, lastStatus))
+                UpdateTrayIcon(status, lightTaskbar);
+            UpdateTrayTooltip(status);
 
             lastStatus = status;
             lastLightTaskbar = lightTaskbar;
@@ -183,12 +202,31 @@ namespace AudioFlipper
                 popup.ShowStatus(status);
         }
 
+        // The tray icon shows the device's icon and whether it's muted, not the volume level.
+        static bool TrayIconDiffers(OutputStatus a, OutputStatus b)
+        {
+            if (a == null || b == null)
+                return a != b;
+            return a.Device.Id != b.Device.Id || a.Device.IconPath != b.Device.IconPath
+                || a.Device.Kind != b.Device.Kind || a.Muted != b.Muted;
+        }
+
         void UpdateTrayIcon(OutputStatus status, bool lightTaskbar)
         {
             Icon previous = trayIcon.Icon;
             trayIcon.Icon = IconRenderer.Render(status, lightTaskbar);
             previous?.Dispose();
-            trayIcon.Text = BuildTooltip(status);
+        }
+
+        void UpdateTrayTooltip(OutputStatus status)
+        {
+            string text = BuildTooltip(status);
+            // Every change is a call into Explorer; while the volume is changing quickly, let the
+            // tooltip catch up a few times a second rather than on every step.
+            if (text == trayIcon.Text || Environment.TickCount - lastTooltipUpdate < TooltipUpdateMilliseconds)
+                return;
+            trayIcon.Text = text;
+            lastTooltipUpdate = Environment.TickCount;
         }
 
         static string BuildTooltip(OutputStatus status)
@@ -330,6 +368,7 @@ namespace AudioFlipper
         protected override void ExitThreadCore()
         {
             refreshTimer.Stop();
+            volumeRefreshTimer.Stop();
             strip.SetShowOnTaskbar(false);
             trayIcon.Visible = false;
             base.ExitThreadCore();
@@ -340,6 +379,7 @@ namespace AudioFlipper
             if (disposing)
             {
                 refreshTimer.Dispose();
+                volumeRefreshTimer.Dispose();
                 trayIcon.Icon?.Dispose();
                 trayIcon.Dispose();
                 menu.Dispose();
