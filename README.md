@@ -19,8 +19,8 @@ AudioFlipper also has a notification-area (tray) icon showing the active device'
 same clicks, so you can turn the widget off and use only the icon if you prefer.
 
 The right-click menu lets you pick a device directly, choose which devices are in the click
-rotation, open the Windows sound settings, and turn **Show on taskbar**, **Start with Windows**
-and the other options on or off.
+rotation, open the Windows sound settings, set up the webcam switch, and turn **Show on taskbar**,
+**Start with Windows** and the other options on or off.
 
 ## Device names and icons
 
@@ -30,6 +30,27 @@ the same ones you see on its **Playback** tab.
 To change them, choose **Rename or change device icons…** from the right-click menu. That opens the
 Sound control panel's Playback tab: right-click a device, choose **Properties**, then type a new
 name or click **Change Icon**. AudioFlipper picks up the change within a second.
+
+## Webcam on/off
+
+AudioFlipper can also turn a webcam on and off from the taskbar widget. Turn it on under
+**Webcam → Show webcam on taskbar** in the right-click menu, and pick the webcam to control from the
+list in the same menu.
+
+The widget then gets a camera icon on its right, with a slash through it while the webcam is off.
+Click it to switch. **Webcam → Camera settings…** opens the camera page in Windows Settings.
+
+Turning the webcam off works like **Disable device** in Device Manager: no app can use it until it's
+turned back on. Windows only lets administrators do that, so by default each switch shows a Windows
+prompt asking to allow "PnP Utility" (Microsoft's `pnputil.exe`) to make changes.
+
+To stop the prompts, choose **Webcam → Switch without asking each time**. That asks once, and sets
+up two scheduled tasks ("AudioFlipper Webcam On" and "AudioFlipper Webcam Off") that run
+`pnputil.exe` from the Windows folder to turn that one webcam on or off. AudioFlipper starts them
+when you click the camera, with no prompt. They can't run anything else. Choosing the option again
+removes them (and asks once more). Picking a different webcam sets them up for that one.
+
+Webcams that are unplugged don't show on the widget.
 
 ## How the taskbar widget works
 

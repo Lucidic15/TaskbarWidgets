@@ -1,9 +1,11 @@
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
+using AudioFlipper.Webcams;
 
 namespace AudioFlipper
 {
@@ -12,6 +14,8 @@ namespace AudioFlipper
     /// output's icon, name and volume.
     /// Click to switch output, scroll to change volume, middle-click to mute, right-click for the menu,
     /// and drag to move it along the taskbar. Hovering opens a flyout with a volume slider.
+    /// Optionally, a webcam section on the right shows whether a chosen webcam is on (a camera icon,
+    /// struck through when off), and turns it on or off when clicked.
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
@@ -39,12 +43,21 @@ namespace AudioFlipper
         readonly NativeMethods.WinEventProc onForegroundChanged; // Kept in a field so the GC doesn't collect it.
         IntPtr foregroundHook;
 
+        enum Part
+        {
+            None,
+            Audio,
+            Webcam,
+        }
+
         bool showOnTaskbar;
         OutputStatus status;
+        WebcamStatus webcam; // Null hides the webcam section.
         bool lightTaskbar;
         Rectangle taskbar;
         int offset; // Pixels from the taskbar's left edge; negative means the default position.
-        bool hovered;
+        int audioWidth; // The audio section is on the left; the webcam section, if shown, fills the rest.
+        Part hovered;
         bool pressed;
         bool dragging;
         int dragStartCursorX;
@@ -74,8 +87,8 @@ namespace AudioFlipper
             hoverTimer.Tick += (sender, e) =>
             {
                 hoverTimer.Stop();
-                if (Visible && !pressed && Bounds.Contains(Cursor.Position))
-                    flyout.ShowAbove(Bounds);
+                if (Visible && !pressed && AudioBounds.Contains(Cursor.Position))
+                    flyout.ShowAbove(AudioBounds);
             };
             flyout.VolumeChangeRequested += (sender, level) => VolumeChangeRequested?.Invoke(this, level);
             flyout.VolumeStepsRequested += (sender, notches) => VolumeStepsRequested?.Invoke(this, notches);
@@ -94,10 +107,15 @@ namespace AudioFlipper
 
         public event EventHandler MenuRequested;
 
+        public event EventHandler WebcamToggleRequested;
+
         /// <summary>Raised after the strip has been dragged to a new position.</summary>
         public event EventHandler OffsetChanged;
 
         public int Offset => offset;
+
+        /// <summary>Screen bounds of the audio section, which the volume flyout opens above.</summary>
+        Rectangle AudioBounds => new Rectangle(Left, Top, audioWidth, Height);
 
         protected override bool ShowWithoutActivation => true;
 
@@ -139,6 +157,14 @@ namespace AudioFlipper
             UpdatePlacement(true);
         }
 
+        public void SetWebcam(WebcamStatus webcam)
+        {
+            if (WebcamStatus.AreEqual(webcam, this.webcam))
+                return;
+            this.webcam = webcam;
+            UpdatePlacement(true);
+        }
+
         void UpdatePlacement() => UpdatePlacement(false);
 
         /// <summary>Moves the strip onto the taskbar and above it, or hides it when it shouldn't show.</summary>
@@ -156,7 +182,8 @@ namespace AudioFlipper
                 return;
             }
 
-            int width = Math.Min(MeasureWidth(), bar.Width);
+            audioWidth = MeasureAudioWidth();
+            int width = Math.Min(audioWidth + (webcam != null ? Px(44) : 0), bar.Width);
             int preferredOffset = offset >= 0 ? offset : DefaultOffset(bar.Width, width);
             int x = bar.Left + Math.Max(0, Math.Min(preferredOffset, bar.Width - width));
             var bounds = new Rectangle(x, bar.Top, width, bar.Height);
@@ -169,7 +196,7 @@ namespace AudioFlipper
             }
             if (!Visible)
                 Show();
-            flyout.SetAnchor(Bounds);
+            flyout.SetAnchor(AudioBounds);
 
             // The taskbar comes to the front whenever it's clicked; stay above it.
             NativeMethods.SetWindowPos(Handle, NativeMethods.HwndTopmost, 0, 0, 0, 0,
@@ -181,22 +208,28 @@ namespace AudioFlipper
         int DefaultOffset(int barWidth, int width) => Taskbar.IconsAreLeftAligned() ? (barWidth - width) / 2 : Px(180);
 
         /// <summary>Fits the device name, like the weather widget sizes itself to its text.</summary>
-        int MeasureWidth()
+        int MeasureAudioWidth()
         {
             string name = status?.Device.Name ?? "No output device";
-            if (name == measuredName)
-                return measuredWidth;
+            if (name != measuredName)
+            {
+                measuredName = name;
+                measuredWidth = Math.Max(Px(MinLogicalWidth), Math.Min(Px(MaxLogicalWidth), Px(44) + MeasureText(name, nameFont) + Px(20)));
+            }
+            return measuredWidth;
+        }
 
+        static int MeasureText(string text, Font font)
+        {
             using (var measuring = new Bitmap(1, 1))
             using (Graphics graphics = Graphics.FromImage(measuring))
             {
                 graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                int textWidth = (int)Math.Ceiling(graphics.MeasureString(name, nameFont, PointF.Empty, StringFormat.GenericTypographic).Width);
-                measuredName = name;
-                measuredWidth = Math.Max(Px(MinLogicalWidth), Math.Min(Px(MaxLogicalWidth), Px(44) + textWidth + Px(20)));
-                return measuredWidth;
+                return (int)Math.Ceiling(graphics.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width);
             }
         }
+
+        Part PartAt(Point clientPoint) => webcam != null && clientPoint.X >= audioWidth ? Part.Webcam : Part.Audio;
 
         void Render()
         {
@@ -214,21 +247,24 @@ namespace AudioFlipper
                 {
                     // Nearly invisible, but fully transparent pixels would let clicks fall through to the taskbar.
                     graphics.Clear(Color.FromArgb(1, 0, 0, 0));
-                    graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-                    if (hovered || dragging)
-                    {
-                        Shapes.FillRoundedRectangle(graphics, Color.FromArgb(lightTaskbar ? 18 : 24, foreground),
-                            new RectangleF(Px(2), Px(4), Width - Px(4), Height - Px(8)), Px(4));
-                    }
+                    Color highlight = Color.FromArgb(lightTaskbar ? 18 : 24, foreground);
+                    int audioRight = webcam != null ? audioWidth : Width;
+                    if (dragging)
+                        Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(Px(2), Px(4), Width - Px(4), Height - Px(8)), Px(4));
+                    else if (hovered == Part.Audio)
+                        Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(Px(2), Px(4), audioRight - Px(4), Height - Px(8)), Px(4));
+                    else if (hovered == Part.Webcam)
+                        Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(audioRight + Px(2), Px(4), Width - audioRight - Px(4), Height - Px(8)), Px(4));
 
                     int middle = Height / 2;
                     int iconSize = Px(24);
                     DeviceIcons.Draw(graphics, status, new Rectangle(Px(10), middle - iconSize / 2, iconSize, iconSize), foreground);
 
                     float textLeft = Px(44);
-                    float textWidth = Width - textLeft - Px(10);
+                    float textWidth = audioRight - textLeft - Px(10);
                     using (var format = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter, LineAlignment = StringAlignment.Center })
                     using (var foregroundBrush = new SolidBrush(foreground))
                     using (var secondaryBrush = new SolidBrush(secondary))
@@ -248,27 +284,77 @@ namespace AudioFlipper
                             if (!status.Muted)
                                 Shapes.FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, status.VolumePercent) / 100f, bar.Height));
                         }
+
+                        if (webcam != null)
+                        {
+                            // A thin divider, then the camera icon, struck through when off.
+                            using (var divider = new Pen(Color.FromArgb(lightTaskbar ? 50 : 60, foreground), 1f))
+                                graphics.DrawLine(divider, audioRight, Px(14), audioRight, Height - Px(14));
+
+                            Color iconColor = webcam.Busy ? Color.FromArgb(110, foreground) : foreground;
+                            Color behindIcon = !dragging && hovered == Part.Webcam ? highlight : Color.FromArgb(1, 0, 0, 0);
+                            int camera = Px(20);
+                            DrawWebcamIcon(graphics, new RectangleF(audioRight + Px(12), middle - camera / 2f, camera, camera), iconColor, !webcam.Enabled, behindIcon);
+                        }
                     }
                 }
                 NativeMethods.SetLayeredWindowBitmap(Handle, bitmap, Location);
             }
         }
 
+        /// <summary>A video-camera outline: a body and a lens, with a slash through it when off.</summary>
+        static void DrawWebcamIcon(Graphics graphics, RectangleF box, Color color, bool off, Color behind)
+        {
+            float s = box.Width;
+            using (var brush = new SolidBrush(color))
+            {
+                Shapes.FillRoundedRectangle(graphics, color, new RectangleF(box.X + s * 0.04f, box.Y + s * 0.26f, s * 0.62f, s * 0.48f), s * 0.1f);
+                graphics.FillPolygon(brush, new[]
+                {
+                    new PointF(box.X + s * 0.70f, box.Y + s * 0.42f),
+                    new PointF(box.X + s * 0.96f, box.Y + s * 0.27f),
+                    new PointF(box.X + s * 0.96f, box.Y + s * 0.73f),
+                    new PointF(box.X + s * 0.70f, box.Y + s * 0.58f),
+                });
+            }
+            if (!off)
+                return;
+
+            var start = new PointF(box.X + s * 0.06f, box.Y + s * 0.06f);
+            var end = new PointF(box.X + s * 0.94f, box.Y + s * 0.94f);
+            // Cut a gap around the slash so it reads clearly against the icon.
+            CompositingMode previous = graphics.CompositingMode;
+            graphics.CompositingMode = CompositingMode.SourceCopy;
+            using (var gap = new Pen(behind, s * 0.26f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                graphics.DrawLine(gap, start, end);
+            graphics.CompositingMode = previous;
+            using (var slash = new Pen(color, s * 0.1f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                graphics.DrawLine(slash, start, end);
+        }
+
+        void SetHovered(Part part)
+        {
+            if (part == hovered)
+                return;
+            hovered = part;
+            Render();
+            // Only the audio section opens the volume flyout; an open flyout closes itself once
+            // the mouse is away from it and the audio section.
+            hoverTimer.Stop();
+            if (part == Part.Audio)
+                hoverTimer.Start();
+        }
+
         protected override void OnMouseEnter(EventArgs e)
         {
             base.OnMouseEnter(e);
-            hovered = true;
-            Render();
-            hoverTimer.Stop();
-            hoverTimer.Start();
+            SetHovered(PartAt(PointToClient(Cursor.Position)));
         }
 
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            hovered = false;
-            Render();
-            hoverTimer.Stop(); // An open flyout closes itself once the mouse is away from both.
+            SetHovered(Part.None);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -286,7 +372,10 @@ namespace AudioFlipper
         {
             base.OnMouseMove(e);
             if (!pressed)
+            {
+                SetHovered(PartAt(e.Location));
                 return;
+            }
 
             int distance = Cursor.Position.X - dragStartCursorX;
             if (!dragging && Math.Abs(distance) < SystemInformation.DragSize.Width)
@@ -316,13 +405,18 @@ namespace AudioFlipper
                         Render();
                         OffsetChanged?.Invoke(this, EventArgs.Empty);
                     }
+                    else if (PartAt(e.Location) == Part.Webcam)
+                    {
+                        WebcamToggleRequested?.Invoke(this, EventArgs.Empty);
+                    }
                     else
                     {
                         NextRequested?.Invoke(this, EventArgs.Empty);
                     }
                     break;
                 case MouseButtons.Middle:
-                    MuteRequested?.Invoke(this, EventArgs.Empty);
+                    if (PartAt(e.Location) == Part.Audio)
+                        MuteRequested?.Invoke(this, EventArgs.Empty);
                     break;
                 case MouseButtons.Right:
                     hoverTimer.Stop();
