@@ -12,7 +12,7 @@
     <ApplicationIcon>AudioFlipper.ico</ApplicationIcon>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>AudioFlipper</Product>
     <Description>Tray icon that cycles the default Windows audio output device.</Description>
   </PropertyGroup>

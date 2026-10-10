@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Media;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
 using AudioFlipper.Webcams;
@@ -21,6 +22,7 @@ namespace AudioFlipper
         const int VolumeStepPercent = 2; // Same step as the Windows volume flyout.
         const int VolumeRefreshMilliseconds = 30; // How often the widget catches up while the volume is changing.
         const int TooltipUpdateMilliseconds = 250;
+        const int DingAfterScrollMilliseconds = 250; // Ding once scrolling pauses, not on every notch.
 
         readonly AudioDeviceManager audio = new AudioDeviceManager();
         readonly Settings settings = Settings.Load();
@@ -28,6 +30,7 @@ namespace AudioFlipper
         readonly ContextMenuStrip menu = new ContextMenuStrip();
         readonly Timer refreshTimer = new Timer { Interval = RefreshIntervalMilliseconds };
         readonly Timer volumeRefreshTimer = new Timer { Interval = VolumeRefreshMilliseconds };
+        readonly Timer dingTimer = new Timer { Interval = DingAfterScrollMilliseconds };
         readonly OsdForm popup = new OsdForm();
         readonly TaskbarStrip strip;
 
@@ -61,6 +64,11 @@ namespace AudioFlipper
             strip.MuteRequested += (sender, e) => ToggleMute(e.Flow);
             strip.VolumeStepsRequested += (sender, e) => ChangeVolume(e.Flow, e.Notches * VolumeStepPercent);
             strip.VolumeChangeRequested += (sender, e) => SetVolume(e.Flow, e.Level);
+            strip.VolumeChangeFinished += (sender, e) =>
+            {
+                if (e.Flow == EDataFlow.Render)
+                    Ding();
+            };
             strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
             strip.WebcamToggleRequested += (sender, e) => ToggleWebcam();
             strip.OffsetChanged += (sender, e) =>
@@ -74,6 +82,7 @@ namespace AudioFlipper
                 RefreshStatus(false);
                 RefreshWebcam();
             };
+            dingTimer.Tick += (sender, e) => Ding();
             volumeRefreshTimer.Tick += (sender, e) =>
             {
                 volumeRefreshTimer.Stop();
@@ -160,11 +169,27 @@ namespace AudioFlipper
             {
                 audio.ChangeDefaultVolume(flow, percentagePoints);
                 RefreshSoon();
+                if (flow == EDataFlow.Render && settings.VolumeDing)
+                {
+                    dingTimer.Stop();
+                    dingTimer.Start();
+                }
             }
             catch (Exception ex)
             {
                 popup.ShowMessage("Couldn't change volume", ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Plays the Windows "Default Beep" (the ding Windows' own volume slider makes) on the
+        /// default output, so the new volume can be heard. Uses the sound from the Windows sound scheme.
+        /// </summary>
+        void Ding()
+        {
+            dingTimer.Stop();
+            if (settings.VolumeDing)
+                SystemSounds.Beep.Play();
         }
 
         // Slider drags and fast scrolling change the volume dozens of times a second; refresh the
@@ -358,7 +383,10 @@ namespace AudioFlipper
                     settings.SwitchInputCommunications = value;
             }));
             if (isOutput)
+            {
+                items.Add(Toggle("Ding when changing volume", settings.VolumeDing, value => settings.VolumeDing = value));
                 items.Add(Toggle("Show popup on change", settings.ShowPopup, value => settings.ShowPopup = value));
+            }
 
             items.Add(new ToolStripSeparator());
             items.Add("Rename or change device icons…", null, (sender, e) => OpenSoundControlPanel(flow));
@@ -585,6 +613,7 @@ namespace AudioFlipper
         {
             refreshTimer.Stop();
             volumeRefreshTimer.Stop();
+            dingTimer.Stop();
             strip.SetSections(false, false);
             strip.SetWebcam(null);
             trayIcon.Visible = false;
@@ -597,6 +626,7 @@ namespace AudioFlipper
             {
                 refreshTimer.Dispose();
                 volumeRefreshTimer.Dispose();
+                dingTimer.Dispose();
                 trayIcon.Icon?.Dispose();
                 trayIcon.Dispose();
                 menu.Dispose();

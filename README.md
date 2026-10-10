@@ -17,6 +17,10 @@ each show or hide:
 - **Scroll**: turn the volume (or microphone level) up or down.
 - **Middle-click**: mute / unmute.
 
+After you change the output volume (when you let go of the slider, or stop scrolling), AudioFlipper
+plays the Windows "Default Beep" ding at the new level, like Windows' own volume slider, so you can
+hear whether it's right. Turn it off with **Output → Ding when changing volume**.
+
 Anywhere on the widget, **right-click** for the menu and **drag** left or right to move it along the
 taskbar. It remembers where you put it.
 

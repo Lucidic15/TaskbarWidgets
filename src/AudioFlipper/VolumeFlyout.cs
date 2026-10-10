@@ -46,6 +46,9 @@ namespace AudioFlipper
         /// <summary>Raised while dragging or clicking the slider, with the new volume from 0 to 1.</summary>
         public event EventHandler<float> VolumeChangeRequested;
 
+        /// <summary>Raised when the slider is let go after dragging or clicking it.</summary>
+        public event EventHandler VolumeChangeFinished;
+
         /// <summary>Raised on mouse-wheel scrolling with the number of notches (positive is up).</summary>
         public event EventHandler<int> VolumeStepsRequested;
 
@@ -206,6 +209,7 @@ namespace AudioFlipper
                 holdingDragLevel = true;
                 releasedAt = Environment.TickCount;
                 Invalidate();
+                VolumeChangeFinished?.Invoke(this, EventArgs.Empty);
                 if (!ClientRectangle.Contains(e.Location))
                     Hide(); // Released outside the flyout.
             }
