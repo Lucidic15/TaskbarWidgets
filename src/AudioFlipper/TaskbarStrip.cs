@@ -155,6 +155,11 @@ namespace AudioFlipper
                 if (FlowOf(flyoutPart) is EDataFlow flow)
                     VolumeChangeRequested?.Invoke(this, new VolumeLevelEventArgs(flow, level));
             };
+            flyout.VolumeChangeFinished += (sender, e) =>
+            {
+                if (FlowOf(flyoutPart) is EDataFlow flow)
+                    VolumeChangeFinished?.Invoke(this, new AudioFlowEventArgs(flow));
+            };
             flyout.VolumeStepsRequested += (sender, notches) =>
             {
                 if (FlowOf(flyoutPart) is EDataFlow flow)
@@ -176,6 +181,9 @@ namespace AudioFlipper
 
         /// <summary>Raised from the flyout's slider.</summary>
         public event EventHandler<VolumeLevelEventArgs> VolumeChangeRequested;
+
+        /// <summary>Raised when the flyout's slider is let go.</summary>
+        public event EventHandler<AudioFlowEventArgs> VolumeChangeFinished;
 
         public event EventHandler MenuRequested;
 

@@ -22,6 +22,9 @@ namespace AudioFlipper
         /// <summary>Show the popup when the output device changes (only while the taskbar widget isn't showing).</summary>
         public bool ShowPopup { get; set; } = true;
 
+        /// <summary>Play the Windows "Default Beep" after changing the output volume, to hear the new level.</summary>
+        public bool VolumeDing { get; set; } = true;
+
         /// <summary>Show the output section on the taskbar widget.</summary>
         public bool ShowOutput { get; set; } = true;
 
@@ -86,6 +89,9 @@ namespace AudioFlipper
                         case "ShowOnTaskbar": // Before 1.1 there was one switch for the whole widget.
                             settings.ShowOutput = ParseBool(value, settings.ShowOutput);
                             break;
+                        case "VolumeDing":
+                            settings.VolumeDing = ParseBool(value, settings.VolumeDing);
+                            break;
                         case "ShowInput":
                             settings.ShowInput = ParseBool(value, settings.ShowInput);
                             break;
@@ -130,6 +136,7 @@ namespace AudioFlipper
                 "ShowPopup=" + ShowPopup,
                 "ShowOutput=" + ShowOutput,
                 "ShowInput=" + ShowInput,
+                "VolumeDing=" + VolumeDing,
                 "SwitchInputCommunications=" + SwitchInputCommunications,
                 "TaskbarOffset=" + TaskbarOffset,
                 "ShowWebcam=" + ShowWebcam,
