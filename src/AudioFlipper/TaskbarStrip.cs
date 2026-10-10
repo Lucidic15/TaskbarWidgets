@@ -5,6 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
 using AudioFlipper.Webcams;
@@ -57,8 +58,10 @@ namespace AudioFlipper
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
-    /// window kept over the taskbar. It re-raises itself when the taskbar is clicked, and hides when the
-    /// taskbar auto-hides or a full-screen app is in front.
+    /// window kept just above the taskbar. It moves back above the taskbar when the taskbar is clicked,
+    /// and hides when the taskbar auto-hides or a full-screen app is in front. To know about full-screen
+    /// apps it registers as an app bar (without reserving any screen space), the same way the taskbar
+    /// learns to step aside for them.
     /// </remarks>
     internal sealed class TaskbarStrip : Form
     {
@@ -97,6 +100,8 @@ namespace AudioFlipper
         readonly NativeMethods.WinEventProc onForegroundChanged; // Kept in a field so the GC doesn't collect it.
         readonly Dictionary<string, int> measuredWidths = new Dictionary<string, int>();
         IntPtr foregroundHook;
+        int appBarMessage;
+        bool shellReportsFullScreen;
 
         bool showOutput;
         bool showInput;
@@ -265,7 +270,7 @@ namespace AudioFlipper
                 return;
             if (!HasSections
                 || !Taskbar.TryGetVisibleBounds(out Rectangle bar, out Rectangle monitor)
-                || Taskbar.IsFullScreenAppActive(monitor, Handle))
+                || Taskbar.IsFullScreenAppActive(monitor, Handle, shellReportsFullScreen))
             {
                 if (Visible)
                     Hide();
@@ -290,9 +295,65 @@ namespace AudioFlipper
             if (flyout.Visible)
                 flyout.SetAnchor(SectionScreenBounds(flyoutPart));
 
-            // The taskbar comes to the front whenever it's clicked; stay above it.
-            NativeMethods.SetWindowPos(Handle, NativeMethods.HwndTopmost, 0, 0, 0, 0,
+            StayAboveTaskbar();
+        }
+
+        /// <summary>
+        /// The taskbar comes to the front whenever it's clicked, so move back above it. Only just above
+        /// it, though: windows that belong over the taskbar, like a screenshot tool's overlay or an
+        /// always-on-top window, stay over the widget too.
+        /// </summary>
+        void StayAboveTaskbar()
+        {
+            IntPtr taskbarWindow = Taskbar.FindWindow();
+            if (taskbarWindow == IntPtr.Zero)
+                return;
+            for (IntPtr window = NativeMethods.GetWindow(taskbarWindow, NativeMethods.GwHwndPrev);
+                 window != IntPtr.Zero;
+                 window = NativeMethods.GetWindow(window, NativeMethods.GwHwndPrev))
+            {
+                if (window == Handle)
+                    return; // Already above the taskbar.
+            }
+
+            // Placing the widget after (below) the window just above the taskbar puts it directly over the taskbar.
+            IntPtr justAbove = NativeMethods.GetWindow(taskbarWindow, NativeMethods.GwHwndPrev);
+            NativeMethods.SetWindowPos(Handle, justAbove != IntPtr.Zero ? justAbove : NativeMethods.HwndTopmost, 0, 0, 0, 0,
                 NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpNoActivate);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            appBarMessage = NativeMethods.RegisterWindowMessage("AudioFlipper.AppBarNotification");
+            NativeMethods.AppBarData data = AppBarData();
+            NativeMethods.SHAppBarMessage(NativeMethods.AbmNew, ref data);
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            NativeMethods.AppBarData data = AppBarData();
+            NativeMethods.SHAppBarMessage(NativeMethods.AbmRemove, ref data);
+            base.OnHandleDestroyed(e);
+        }
+
+        NativeMethods.AppBarData AppBarData() => new NativeMethods.AppBarData
+        {
+            Size = Marshal.SizeOf(typeof(NativeMethods.AppBarData)),
+            Window = Handle,
+            CallbackMessage = appBarMessage,
+        };
+
+        protected override void WndProc(ref Message m)
+        {
+            // Windows says a full-screen app opened or closed (lParam is true while one is open).
+            if (appBarMessage != 0 && m.Msg == appBarMessage && m.WParam.ToInt64() == NativeMethods.AbnFullScreenApp)
+            {
+                shellReportsFullScreen = m.LParam != IntPtr.Zero;
+                UpdatePlacement();
+                return;
+            }
+            base.WndProc(ref m);
         }
 
         // With centered taskbar icons the left end is free, but the Widgets (weather) button sits in

@@ -20,6 +20,11 @@ namespace AudioFlipper
 
         public const int QunsRunningD3DFullScreen = 3;
 
+        public const uint GwHwndPrev = 3;
+        public const uint AbmNew = 0;
+        public const uint AbmRemove = 1;
+        public const int AbnFullScreenApp = 2;
+
         const byte AcSrcOver = 0x0;
         const byte AcSrcAlpha = 0x1;
         const int UlwAlpha = 0x2;
@@ -35,6 +40,17 @@ namespace AudioFlipper
             public int Bottom;
 
             public Rectangle ToRectangle() => Rectangle.FromLTRB(Left, Top, Right, Bottom);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct AppBarData
+        {
+            public int Size;
+            public IntPtr Window;
+            public int CallbackMessage;
+            public int Edge;
+            public Rect Bounds;
+            public IntPtr LParam;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -87,6 +103,15 @@ namespace AudioFlipper
 
         [DllImport("shell32.dll")]
         public static extern int SHQueryUserNotificationState(out int state);
+
+        [DllImport("shell32.dll")]
+        public static extern UIntPtr SHAppBarMessage(uint message, ref AppBarData data);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int RegisterWindowMessage(string name);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetWindow(IntPtr window, uint relationship);
 
         /// <summary>Extracts an icon at a specific size; negative indexes are resource IDs.</summary>
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
