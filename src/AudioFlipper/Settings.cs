@@ -24,6 +24,15 @@ namespace AudioFlipper
         /// <summary>Taskbar widget position in pixels from the taskbar's left edge; negative for the default.</summary>
         public int TaskbarOffset { get; set; } = -1;
 
+        /// <summary>Show the webcam on/off control on the taskbar widget.</summary>
+        public bool ShowWebcam { get; set; }
+
+        /// <summary>Device instance ID of the webcam to control.</summary>
+        public string WebcamId { get; set; }
+
+        /// <summary>Name of the webcam to control, kept so it can be shown without looking the device up.</summary>
+        public string WebcamName { get; set; }
+
         public bool IsExcluded(string deviceId) => excludedDeviceIds.Contains(deviceId);
 
         public void SetExcluded(string deviceId, bool excluded)
@@ -61,6 +70,15 @@ namespace AudioFlipper
                         case "ShowOnTaskbar":
                             settings.ShowOnTaskbar = ParseBool(value, settings.ShowOnTaskbar);
                             break;
+                        case "ShowWebcam":
+                            settings.ShowWebcam = ParseBool(value, settings.ShowWebcam);
+                            break;
+                        case "WebcamId":
+                            settings.WebcamId = value;
+                            break;
+                        case "WebcamName":
+                            settings.WebcamName = value;
+                            break;
                         case "TaskbarOffset":
                             if (int.TryParse(value, out int offset))
                                 settings.TaskbarOffset = offset;
@@ -87,6 +105,9 @@ namespace AudioFlipper
                 "ShowPopup=" + ShowPopup,
                 "ShowOnTaskbar=" + ShowOnTaskbar,
                 "TaskbarOffset=" + TaskbarOffset,
+                "ShowWebcam=" + ShowWebcam,
+                "WebcamId=" + WebcamId,
+                "WebcamName=" + WebcamName,
             };
             foreach (string id in excludedDeviceIds)
                 lines.Add("Exclude=" + id);

@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
+using AudioFlipper.Webcams;
 
 namespace AudioFlipper
 {
@@ -33,6 +34,7 @@ namespace AudioFlipper
         OutputStatus lastStatus;
         bool lastLightTaskbar;
         bool hasRefreshed;
+        bool webcamBusy;
         int lastTooltipUpdate;
 
         public TrayApp()
@@ -58,13 +60,18 @@ namespace AudioFlipper
             strip.VolumeStepsRequested += (sender, steps) => ChangeVolume(steps * VolumeStepPercent);
             strip.VolumeChangeRequested += (sender, level) => SetVolume(level);
             strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
+            strip.WebcamToggleRequested += (sender, e) => ToggleWebcam();
             strip.OffsetChanged += (sender, e) =>
             {
                 settings.TaskbarOffset = strip.Offset;
                 SaveSettings();
             };
 
-            refreshTimer.Tick += (sender, e) => RefreshStatus(false);
+            refreshTimer.Tick += (sender, e) =>
+            {
+                RefreshStatus(false);
+                RefreshWebcam();
+            };
             volumeRefreshTimer.Tick += (sender, e) =>
             {
                 volumeRefreshTimer.Stop();
@@ -72,6 +79,7 @@ namespace AudioFlipper
             };
 
             RefreshStatus(false);
+            RefreshWebcam();
             trayIcon.Visible = true;
             strip.SetShowOnTaskbar(settings.ShowOnTaskbar);
             refreshTimer.Start();
@@ -314,7 +322,124 @@ namespace AudioFlipper
             menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
 
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(BuildWebcamMenu());
+
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, (sender, e) => ExitThread());
+        }
+
+        ToolStripMenuItem BuildWebcamMenu()
+        {
+            List<Webcam> webcams;
+            try
+            {
+                webcams = WebcamDevices.GetAll();
+            }
+            catch (Exception)
+            {
+                webcams = new List<Webcam>();
+            }
+
+            var webcamMenu = new ToolStripMenuItem("Webcam");
+            webcamMenu.DropDownItems.Add(Toggle("Show webcam on taskbar", settings.ShowWebcam, value =>
+            {
+                settings.ShowWebcam = value;
+                if (value && string.IsNullOrEmpty(settings.WebcamId) && webcams.Count > 0)
+                    SelectWebcam(webcams[0]);
+                RefreshWebcam();
+            }));
+
+            webcamMenu.DropDownItems.Add(new ToolStripSeparator());
+            webcamMenu.DropDownItems.Add(new ToolStripMenuItem("Webcam to control") { Enabled = false });
+            if (webcams.Count == 0)
+                webcamMenu.DropDownItems.Add(new ToolStripMenuItem("No webcams found") { Enabled = false });
+            foreach (Webcam webcam in webcams)
+            {
+                Webcam choice = webcam;
+                var item = new ToolStripMenuItem(webcam.Enabled ? webcam.Name : webcam.Name + "  (off)")
+                {
+                    Checked = webcam.InstanceId == settings.WebcamId,
+                };
+                item.Click += (sender, e) =>
+                {
+                    SelectWebcam(choice);
+                    settings.ShowWebcam = true;
+                    SaveSettings();
+                    RefreshWebcam();
+                };
+                webcamMenu.DropDownItems.Add(item);
+            }
+
+            webcamMenu.DropDownItems.Add(new ToolStripSeparator());
+            Webcam selected = webcams.FirstOrDefault(w => w.InstanceId == settings.WebcamId);
+            if (selected != null)
+            {
+                string action = (selected.Enabled ? "Turn off " : "Turn on ") + selected.Name;
+                webcamMenu.DropDownItems.Add(new ToolStripMenuItem(action, null, (sender, e) => ToggleWebcam()) { Enabled = !webcamBusy });
+            }
+            webcamMenu.DropDownItems.Add("Camera settings…", null, (sender, e) => Launch("ms-settings:camera", null, "Couldn't open Camera settings"));
+            return webcamMenu;
+        }
+
+        void SelectWebcam(Webcam webcam)
+        {
+            settings.WebcamId = webcam.InstanceId;
+            settings.WebcamName = webcam.Name;
+        }
+
+        /// <summary>Shows the chosen webcam's state on the widget, or hides the webcam section.</summary>
+        void RefreshWebcam()
+        {
+            WebcamStatus status = null;
+            if (settings.ShowWebcam && !string.IsNullOrEmpty(settings.WebcamId))
+            {
+                bool? enabled = WebcamDevices.IsEnabled(settings.WebcamId);
+                if (enabled != null)
+                    status = new WebcamStatus(settings.WebcamName ?? "Webcam", enabled.Value, webcamBusy);
+            }
+            strip.SetWebcam(status);
+        }
+
+        async void ToggleWebcam()
+        {
+            if (webcamBusy || string.IsNullOrEmpty(settings.WebcamId))
+                return;
+
+            string name = settings.WebcamName ?? "the webcam";
+            bool? enabled = WebcamDevices.IsEnabled(settings.WebcamId);
+            if (enabled == null)
+            {
+                popup.ShowMessage("Webcam not found", name + " isn't connected.");
+                return;
+            }
+
+            bool turnOn = !enabled.Value;
+            webcamBusy = true;
+            RefreshWebcam();
+            // Windows only shows the UAC prompt up front for the foreground app (otherwise it just
+            // flashes on the taskbar), and the widget never takes focus by itself.
+            IntPtr owner = strip.Visible ? strip.Handle : IntPtr.Zero;
+            if (owner != IntPtr.Zero)
+                NativeMethods.SetForegroundWindow(owner);
+            WebcamChangeResult result;
+            try
+            {
+                result = await WebcamDevices.SetEnabledAsync(settings.WebcamId, turnOn, owner);
+            }
+            catch (Exception)
+            {
+                result = WebcamChangeResult.Failed;
+            }
+            finally
+            {
+                webcamBusy = false;
+            }
+            RefreshWebcam();
+
+            if (result == WebcamChangeResult.RestartNeeded)
+                popup.ShowMessage("Restart to finish", "Windows will finish turning " + (turnOn ? "on " : "off ") + name + " after a restart.");
+            else if (result == WebcamChangeResult.Failed)
+                popup.ShowMessage("Couldn't turn " + (turnOn ? "on " : "off ") + name, "Try it from Camera settings in the Webcam menu.");
         }
 
         ToolStripMenuItem Toggle(string text, bool isChecked, Action<bool> apply)
