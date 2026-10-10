@@ -31,34 +31,31 @@ namespace AudioFlipper
         }
 
         /// <summary>
-        /// Draws the active device's Windows icon, faded with a mute badge when muted. Falls back to
-        /// a glyph in <paramref name="glyphColor"/> when there's no device or its icon can't be loaded.
+        /// Draws the active device's Windows icon, or a glyph in <paramref name="glyphColor"/> when
+        /// there's no device or its icon can't be loaded. Muted devices are faded with a mute badge.
         /// </summary>
-        public static void Draw(Graphics graphics, OutputStatus status, Rectangle bounds, Color glyphColor)
+        public static void Draw(Graphics graphics, AudioStatus status, Rectangle bounds, Color glyphColor)
         {
             Bitmap icon = status == null ? null : Get(status.Device.IconPath, Math.Min(bounds.Width, bounds.Height));
+            bool muted = status != null && status.Muted;
             if (icon == null)
             {
-                Glyphs.Draw(graphics, Glyphs.For(status), bounds, glyphColor);
-                return;
-            }
-
-            InterpolationMode previousInterpolation = graphics.InterpolationMode;
-            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            if (status.Muted)
-            {
-                using (var faded = new ImageAttributes())
-                {
-                    faded.SetColorMatrix(new ColorMatrix { Matrix33 = 0.45f });
-                    graphics.DrawImage(icon, bounds, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, faded);
-                }
-                DrawMuteBadge(graphics, bounds);
+                Glyphs.Draw(graphics, Glyphs.For(status), bounds, muted ? Color.FromArgb(115, glyphColor) : glyphColor);
             }
             else
             {
-                graphics.DrawImage(icon, bounds);
+                InterpolationMode previousInterpolation = graphics.InterpolationMode;
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                using (var attributes = new ImageAttributes())
+                {
+                    if (muted)
+                        attributes.SetColorMatrix(new ColorMatrix { Matrix33 = 0.45f });
+                    graphics.DrawImage(icon, bounds, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, attributes);
+                }
+                graphics.InterpolationMode = previousInterpolation;
             }
-            graphics.InterpolationMode = previousInterpolation;
+            if (muted)
+                DrawMuteBadge(graphics, bounds);
         }
 
         static void DrawMuteBadge(Graphics graphics, Rectangle bounds)

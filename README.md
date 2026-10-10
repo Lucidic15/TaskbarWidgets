@@ -1,40 +1,48 @@
 # AudioFlipper
 
-A small Windows 11 app for switching audio outputs from the taskbar. It adds a widget to the
-taskbar, in the same style as the Windows weather widget, that always shows the active output
-device's icon, its name and the volume. Click it to switch to the next output you have enabled
-(speakers → headset → monitor → …).
+A small Windows 11 app for switching audio devices from the taskbar. It adds a widget to the
+taskbar, in the same style as the Windows weather widget, with up to three sections that you can
+each show or hide:
 
-**On the taskbar widget:**
+- **Output**: the active output device's icon, name and volume. Click it to switch to the next
+  output you have enabled (speakers → headset → monitor → …).
+- **Input**: the same for your microphone.
+- **Webcam**: a camera icon that turns a chosen webcam on and off (see below).
+
+**On the Output and Input sections:**
 
 - **Hover**: a flyout opens above it with the device's name, a volume slider, and the device icon
   as a mute button, like the Windows 11 volume flyout. It closes as soon as the mouse leaves it.
-- **Left-click**: switch to the next output device.
-- **Scroll**: turn the volume up or down.
+- **Left-click**: switch to the next device.
+- **Scroll**: turn the volume (or microphone level) up or down.
 - **Middle-click**: mute / unmute.
-- **Right-click**: menu (see below).
-- **Drag** left or right: move it along the taskbar. It remembers where you put it.
 
-AudioFlipper also has a notification-area (tray) icon showing the active device's icon, with the
-same clicks, so you can turn the widget off and use only the icon if you prefer.
+Anywhere on the widget, **right-click** for the menu and **drag** left or right to move it along the
+taskbar. It remembers where you put it.
 
-The right-click menu lets you pick a device directly, choose which devices are in the click
-rotation, open the Windows sound settings, set up the webcam switch, and turn **Show on taskbar**,
-**Start with Windows** and the other options on or off.
+AudioFlipper also has a notification-area (tray) icon for the output, showing the active device's
+icon, with the same clicks.
+
+The right-click menu has an **Output**, an **Input** and a **Webcam** submenu. Each has a **Show on
+taskbar** switch for its section of the widget, and the settings for it: picking a device directly,
+which devices are in the click rotation, whether to switch the communications device too, and links
+to the Windows settings. **Start with Windows** and **Exit** are at the bottom. With all three
+sections turned off the widget is hidden and only the tray icon remains.
 
 ## Device names and icons
 
 AudioFlipper shows each device with the name and icon it has in the Windows Sound control panel,
-the same ones you see on its **Playback** tab.
+the same ones you see on its **Playback** and **Recording** tabs.
 
-To change them, choose **Rename or change device icons…** from the right-click menu. That opens the
-Sound control panel's Playback tab: right-click a device, choose **Properties**, then type a new
-name or click **Change Icon**. AudioFlipper picks up the change within a second.
+To change them, choose **Rename or change device icons…** from the **Output** or **Input** submenu.
+That opens the Sound control panel on the matching tab: right-click a device, choose
+**Properties**, then type a new name or click **Change Icon**. AudioFlipper picks up the change
+within a second.
 
 ## Webcam on/off
 
 AudioFlipper can also turn a webcam on and off from the taskbar widget. Turn it on under
-**Webcam → Show webcam on taskbar** in the right-click menu, and pick the webcam to control from the
+**Webcam → Show on taskbar** in the right-click menu, and pick the webcam to control from the
 list in the same menu.
 
 The widget then gets a camera icon on its right, with a slash through it while the webcam is off.
@@ -99,24 +107,27 @@ builds the exe, creates the tag and publishes the release with the exe attached.
 
 ## Which devices are in the rotation
 
-The rotation is every output that is enabled and connected (what Windows calls *active*), in
-alphabetical order. Devices that are disabled in Windows, or unplugged, are skipped automatically.
-To leave out an output you still want enabled (an HDMI monitor's speakers, for example), untick it
-under **Include in click rotation** in the right-click menu.
+The rotation is every output (or input) that is enabled and connected (what Windows calls
+*active*), in alphabetical order. Devices that are disabled in Windows, or unplugged, are skipped
+automatically. To leave out a device you still want enabled (an HDMI monitor's speakers, or a
+webcam's built-in microphone, for example), untick it under **Include in click rotation** in the
+Output or Input submenu.
 
 By default switching also changes the *communications* device (used by Teams, Discord, etc.) so
-everything plays from the same output. Untick **Also switch communications device** to leave it
-alone.
+calls use the same device. Untick **Also switch communications device** in the Output or Input
+submenu to leave it alone.
 
-When the taskbar widget is turned off (or hidden by a full-screen app), a small popup above the
-taskbar names the new device after each switch. Turn it off with **Show popup on change**.
+When the widget isn't showing the output (its section is turned off, or a full-screen app is in
+front), a small popup above the taskbar names the new output after each switch. Turn it off with
+**Output → Show popup on change**.
 
 ## Command line
 
-`AudioFlipper.exe --next` switches to the next device and exits, without a tray icon. You can use
-it to get a keyboard shortcut: create a shortcut to `AudioFlipper.exe --next` on the desktop or in
-the Start menu, open its **Properties**, and set a **Shortcut key**. If AudioFlipper is running,
-its widget and icon update to show the new device.
+`AudioFlipper.exe --next` switches to the next output and exits, without a tray icon;
+`AudioFlipper.exe --next-input` does the same for microphones. You can use them to get keyboard
+shortcuts: create a shortcut to `AudioFlipper.exe --next` on the desktop or in the Start menu, open
+its **Properties**, and set a **Shortcut key**. If AudioFlipper is running, its widget and icon
+update to show the new device.
 
 ## How it works
 

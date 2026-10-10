@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using AudioFlipper.Audio;
 
 namespace AudioFlipper
 {
@@ -12,14 +13,20 @@ namespace AudioFlipper
 
         readonly HashSet<string> excludedDeviceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Also make the new device the default communications device (used by Teams, Discord, etc.).</summary>
+        /// <summary>Also make the new output the default communications device (used by Teams, Discord, etc.).</summary>
         public bool SwitchCommunications { get; set; } = true;
+
+        /// <summary>Also make the new input the default communications device.</summary>
+        public bool SwitchInputCommunications { get; set; } = true;
 
         /// <summary>Show the popup when the output device changes (only while the taskbar widget isn't showing).</summary>
         public bool ShowPopup { get; set; } = true;
 
-        /// <summary>Show the widget on the taskbar.</summary>
-        public bool ShowOnTaskbar { get; set; } = true;
+        /// <summary>Show the output section on the taskbar widget.</summary>
+        public bool ShowOutput { get; set; } = true;
+
+        /// <summary>Show the input (microphone) section on the taskbar widget.</summary>
+        public bool ShowInput { get; set; }
 
         /// <summary>Taskbar widget position in pixels from the taskbar's left edge; negative for the default.</summary>
         public int TaskbarOffset { get; set; } = -1;
@@ -38,6 +45,8 @@ namespace AudioFlipper
         /// when they aren't set up.
         /// </summary>
         public string WebcamTasksId { get; set; }
+
+        public bool SwitchesCommunications(EDataFlow flow) => flow == EDataFlow.Capture ? SwitchInputCommunications : SwitchCommunications;
 
         public bool IsExcluded(string deviceId) => excludedDeviceIds.Contains(deviceId);
 
@@ -73,8 +82,15 @@ namespace AudioFlipper
                         case "ShowPopup":
                             settings.ShowPopup = ParseBool(value, settings.ShowPopup);
                             break;
-                        case "ShowOnTaskbar":
-                            settings.ShowOnTaskbar = ParseBool(value, settings.ShowOnTaskbar);
+                        case "ShowOutput":
+                        case "ShowOnTaskbar": // Before 1.1 there was one switch for the whole widget.
+                            settings.ShowOutput = ParseBool(value, settings.ShowOutput);
+                            break;
+                        case "ShowInput":
+                            settings.ShowInput = ParseBool(value, settings.ShowInput);
+                            break;
+                        case "SwitchInputCommunications":
+                            settings.SwitchInputCommunications = ParseBool(value, settings.SwitchInputCommunications);
                             break;
                         case "ShowWebcam":
                             settings.ShowWebcam = ParseBool(value, settings.ShowWebcam);
@@ -112,7 +128,9 @@ namespace AudioFlipper
                 "# AudioFlipper settings",
                 "SwitchCommunications=" + SwitchCommunications,
                 "ShowPopup=" + ShowPopup,
-                "ShowOnTaskbar=" + ShowOnTaskbar,
+                "ShowOutput=" + ShowOutput,
+                "ShowInput=" + ShowInput,
+                "SwitchInputCommunications=" + SwitchInputCommunications,
                 "TaskbarOffset=" + TaskbarOffset,
                 "ShowWebcam=" + ShowWebcam,
                 "WebcamId=" + WebcamId,

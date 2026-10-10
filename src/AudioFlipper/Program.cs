@@ -13,7 +13,9 @@ namespace AudioFlipper
         static int Main(string[] args)
         {
             if (args.Any(arg => string.Equals(arg, "--next", StringComparison.OrdinalIgnoreCase)))
-                return SwitchOnce();
+                return SwitchOnce(EDataFlow.Render);
+            if (args.Any(arg => string.Equals(arg, "--next-input", StringComparison.OrdinalIgnoreCase)))
+                return SwitchOnce(EDataFlow.Capture);
 
             // One-time elevated runs that set up or remove the webcam tasks.
             int? webcamTasksResult = WebcamTasks.HandleElevatedCommand(args);
@@ -34,15 +36,15 @@ namespace AudioFlipper
         }
 
         /// <summary>
-        /// "AudioFlipper.exe --next" switches to the next output and exits without a tray icon.
-        /// Useful as a shortcut with a keyboard hotkey, or pinned to the taskbar.
+        /// "AudioFlipper.exe --next" (or "--next-input" for microphones) switches to the next device
+        /// and exits without a tray icon. Useful as a shortcut with a keyboard hotkey.
         /// </summary>
-        static int SwitchOnce()
+        static int SwitchOnce(EDataFlow flow)
         {
             try
             {
                 using (var audio = new AudioDeviceManager())
-                    return OutputCycler.SwitchToNext(audio, Settings.Load()) != null ? 0 : 1;
+                    return DeviceCycler.SwitchToNext(audio, flow, Settings.Load()) != null ? 0 : 1;
             }
             catch (Exception)
             {

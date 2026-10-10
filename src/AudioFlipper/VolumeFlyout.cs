@@ -22,7 +22,7 @@ namespace AudioFlipper
         readonly Font detailFont = new Font("Segoe UI", 9f);
         readonly Font valueFont = new Font("Segoe UI", 10.5f);
 
-        OutputStatus status;
+        AudioStatus status;
         Rectangle anchor;
         int lastCursorNear;
         bool cursorEntered; // Once the mouse has been in the flyout, leaving it closes the flyout.
@@ -76,7 +76,7 @@ namespace AudioFlipper
                 PositionAboveAnchor();
         }
 
-        public void SetStatus(OutputStatus status)
+        public void SetStatus(AudioStatus status)
         {
             this.status = status;
             if (holdingDragLevel && status != null && Math.Abs(status.VolumeLevel - dragLevel) < 0.005f)
@@ -256,7 +256,7 @@ namespace AudioFlipper
 
             if (status == null)
             {
-                TextRenderer.DrawText(graphics, "No output device", titleFont,
+                TextRenderer.DrawText(graphics, "No device", titleFont,
                     new Rectangle(Px(16), Px(12), Width - Px(32), Px(22)), colors.Foreground, flags);
                 DrawBorder(graphics, colors.Border);
                 return;

@@ -1,21 +1,59 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.Linq;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
 using AudioFlipper.Webcams;
 
 namespace AudioFlipper
 {
+    internal sealed class AudioFlowEventArgs : EventArgs
+    {
+        public AudioFlowEventArgs(EDataFlow flow) => Flow = flow;
+
+        public EDataFlow Flow { get; }
+    }
+
+    internal sealed class VolumeStepsEventArgs : EventArgs
+    {
+        public VolumeStepsEventArgs(EDataFlow flow, int notches)
+        {
+            Flow = flow;
+            Notches = notches;
+        }
+
+        public EDataFlow Flow { get; }
+
+        /// <summary>Mouse-wheel notches; positive is up.</summary>
+        public int Notches { get; }
+    }
+
+    internal sealed class VolumeLevelEventArgs : EventArgs
+    {
+        public VolumeLevelEventArgs(EDataFlow flow, float level)
+        {
+            Flow = flow;
+            Level = level;
+        }
+
+        public EDataFlow Flow { get; }
+
+        /// <summary>Volume from 0 to 1.</summary>
+        public float Level { get; }
+    }
+
     /// <summary>
-    /// A taskbar button in the style of the Windows weather widget that always shows the active
-    /// output's icon, name and volume.
-    /// Click to switch output, scroll to change volume, middle-click to mute, right-click for the menu,
-    /// and drag to move it along the taskbar. Hovering opens a flyout with a volume slider.
-    /// Optionally, a webcam section on the right shows whether a chosen webcam is on (a camera icon,
-    /// struck through when off), and turns it on or off when clicked.
+    /// A taskbar button in the style of the Windows weather widget, with up to three sections that
+    /// can each be shown or hidden:
+    /// - Output: the active output's icon, name and volume. Click to switch output, scroll to change
+    ///   volume, middle-click to mute, hover for a volume slider.
+    /// - Input: the same for the active microphone.
+    /// - Webcam: a camera icon, struck through while the chosen webcam is off; click to switch it.
+    /// Right-click anywhere for the menu, and drag to move the widget along the taskbar.
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
@@ -28,11 +66,27 @@ namespace AudioFlipper
         const int WsExToolWindow = 0x80;
         const int WsExLayered = 0x80000;
         const int WsExNoActivate = 0x08000000;
-        const int MinLogicalWidth = 140;
-        const int MaxLogicalWidth = 260;
+        const int MinAudioLogicalWidth = 140;
+        const int MaxAudioLogicalWidth = 260;
+        const int WebcamLogicalWidth = 44;
         const int PlacementIntervalMilliseconds = 250;
         const int HoverDelayMilliseconds = 400;
         const int WheelNotch = 120;
+
+        enum Part
+        {
+            None,
+            Output,
+            Input,
+            Webcam,
+        }
+
+        sealed class Section
+        {
+            public Part Part;
+            public int X;
+            public int Width;
+        }
 
         readonly float dpiScale;
         readonly Font nameFont;
@@ -41,30 +95,26 @@ namespace AudioFlipper
         readonly Timer hoverTimer = new Timer { Interval = HoverDelayMilliseconds };
         readonly Timer placementTimer = new Timer { Interval = PlacementIntervalMilliseconds };
         readonly NativeMethods.WinEventProc onForegroundChanged; // Kept in a field so the GC doesn't collect it.
+        readonly Dictionary<string, int> measuredWidths = new Dictionary<string, int>();
         IntPtr foregroundHook;
 
-        enum Part
-        {
-            None,
-            Audio,
-            Webcam,
-        }
-
-        bool showOnTaskbar;
-        OutputStatus status;
+        bool showOutput;
+        bool showInput;
+        AudioStatus output;
+        AudioStatus input;
         WebcamStatus webcam; // Null hides the webcam section.
         bool lightTaskbar;
         Rectangle taskbar;
         int offset; // Pixels from the taskbar's left edge; negative means the default position.
-        int audioWidth; // The audio section is on the left; the webcam section, if shown, fills the rest.
+        Section[] sections = new Section[0];
         Part hovered;
+        Part hoverTarget; // The section the hover timer will open the flyout for.
+        Part flyoutPart; // The section the flyout is showing.
         bool pressed;
         bool dragging;
         int dragStartCursorX;
         int dragStartOffset;
         int wheelRemainder;
-        string measuredName;
-        int measuredWidth;
 
         public TaskbarStrip(int offset)
         {
@@ -87,35 +137,52 @@ namespace AudioFlipper
             hoverTimer.Tick += (sender, e) =>
             {
                 hoverTimer.Stop();
-                if (Visible && !pressed && AudioBounds.Contains(Cursor.Position))
-                    flyout.ShowAbove(AudioBounds);
+                Rectangle bounds = SectionScreenBounds(hoverTarget);
+                if (Visible && !pressed && bounds.Contains(Cursor.Position))
+                {
+                    flyoutPart = hoverTarget;
+                    flyout.SetStatus(StatusOf(flyoutPart));
+                    flyout.ShowAbove(bounds);
+                }
             };
-            flyout.VolumeChangeRequested += (sender, level) => VolumeChangeRequested?.Invoke(this, level);
-            flyout.VolumeStepsRequested += (sender, notches) => VolumeStepsRequested?.Invoke(this, notches);
-            flyout.MuteRequested += (sender, e) => MuteRequested?.Invoke(this, e);
+            flyout.VolumeChangeRequested += (sender, level) =>
+            {
+                if (FlowOf(flyoutPart) is EDataFlow flow)
+                    VolumeChangeRequested?.Invoke(this, new VolumeLevelEventArgs(flow, level));
+            };
+            flyout.VolumeStepsRequested += (sender, notches) =>
+            {
+                if (FlowOf(flyoutPart) is EDataFlow flow)
+                    VolumeStepsRequested?.Invoke(this, new VolumeStepsEventArgs(flow, notches));
+            };
+            flyout.MuteRequested += (sender, e) =>
+            {
+                if (FlowOf(flyoutPart) is EDataFlow flow)
+                    MuteRequested?.Invoke(this, new AudioFlowEventArgs(flow));
+            };
         }
 
-        public event EventHandler NextRequested;
+        /// <summary>Raised when the output or input section is clicked.</summary>
+        public event EventHandler<AudioFlowEventArgs> NextRequested;
 
-        public event EventHandler MuteRequested;
+        public event EventHandler<AudioFlowEventArgs> MuteRequested;
 
-        /// <summary>Raised on mouse-wheel scrolling with the number of notches (positive is up).</summary>
-        public event EventHandler<int> VolumeStepsRequested;
+        public event EventHandler<VolumeStepsEventArgs> VolumeStepsRequested;
 
-        /// <summary>Raised from the flyout's slider with the new volume from 0 to 1.</summary>
-        public event EventHandler<float> VolumeChangeRequested;
+        /// <summary>Raised from the flyout's slider.</summary>
+        public event EventHandler<VolumeLevelEventArgs> VolumeChangeRequested;
 
         public event EventHandler MenuRequested;
 
         public event EventHandler WebcamToggleRequested;
 
-        /// <summary>Raised after the strip has been dragged to a new position.</summary>
+        /// <summary>Raised after the widget has been dragged to a new position.</summary>
         public event EventHandler OffsetChanged;
 
         public int Offset => offset;
 
-        /// <summary>Screen bounds of the audio section, which the volume flyout opens above.</summary>
-        Rectangle AudioBounds => new Rectangle(Left, Top, audioWidth, Height);
+        /// <summary>Whether the output section is on screen right now.</summary>
+        public bool ShowsOutput => Visible && showOutput;
 
         protected override bool ShowWithoutActivation => true;
 
@@ -129,10 +196,45 @@ namespace AudioFlipper
             }
         }
 
-        public void SetShowOnTaskbar(bool show)
+        bool HasSections => showOutput || showInput || webcam != null;
+
+        /// <summary>Shows or hides the output and input sections. The widget hides when no section is shown.</summary>
+        public void SetSections(bool showOutput, bool showInput)
         {
-            showOnTaskbar = show;
-            if (show)
+            if (showOutput == this.showOutput && showInput == this.showInput)
+                return;
+            this.showOutput = showOutput;
+            this.showInput = showInput;
+            SectionsChanged();
+        }
+
+        public void SetStatus(AudioStatus output, AudioStatus input, bool lightTaskbar)
+        {
+            this.output = output;
+            this.input = input;
+            this.lightTaskbar = lightTaskbar;
+            if (flyoutPart != Part.None)
+                flyout.SetStatus(StatusOf(flyoutPart));
+            UpdatePlacement(true);
+        }
+
+        /// <summary>The webcam's state, or null to hide the webcam section.</summary>
+        public void SetWebcam(WebcamStatus webcam)
+        {
+            if (WebcamStatus.AreEqual(webcam, this.webcam))
+                return;
+            bool sectionsChanged = (webcam == null) != (this.webcam == null);
+            this.webcam = webcam;
+            if (sectionsChanged)
+                SectionsChanged();
+            else
+                UpdatePlacement(true);
+        }
+
+        void SectionsChanged()
+        {
+            // Only keep watching the taskbar while there's something to show on it.
+            if (HasSections)
             {
                 placementTimer.Start();
                 if (foregroundHook == IntPtr.Zero)
@@ -146,33 +248,22 @@ namespace AudioFlipper
                 placementTimer.Stop();
                 Unhook();
             }
-            UpdatePlacement();
-        }
-
-        public void SetStatus(OutputStatus status, bool lightTaskbar)
-        {
-            this.status = status;
-            this.lightTaskbar = lightTaskbar;
-            flyout.SetStatus(status);
+            if (!SectionShown(flyoutPart))
+                flyout.Hide();
             UpdatePlacement(true);
         }
 
-        public void SetWebcam(WebcamStatus webcam)
-        {
-            if (WebcamStatus.AreEqual(webcam, this.webcam))
-                return;
-            this.webcam = webcam;
-            UpdatePlacement(true);
-        }
+        bool SectionShown(Part part) =>
+            part == Part.Output ? showOutput : part == Part.Input ? showInput : part == Part.Webcam && webcam != null;
 
         void UpdatePlacement() => UpdatePlacement(false);
 
-        /// <summary>Moves the strip onto the taskbar and above it, or hides it when it shouldn't show.</summary>
+        /// <summary>Moves the widget onto the taskbar and above it, or hides it when it shouldn't show.</summary>
         void UpdatePlacement(bool contentChanged)
         {
             if (IsDisposed)
                 return;
-            if (!showOnTaskbar
+            if (!HasSections
                 || !Taskbar.TryGetVisibleBounds(out Rectangle bar, out Rectangle monitor)
                 || Taskbar.IsFullScreenAppActive(monitor, Handle))
             {
@@ -182,8 +273,8 @@ namespace AudioFlipper
                 return;
             }
 
-            audioWidth = MeasureAudioWidth();
-            int width = Math.Min(audioWidth + (webcam != null ? Px(44) : 0), bar.Width);
+            LayOutSections();
+            int width = Math.Min(sections.Sum(s => s.Width), bar.Width);
             int preferredOffset = offset >= 0 ? offset : DefaultOffset(bar.Width, width);
             int x = bar.Left + Math.Max(0, Math.Min(preferredOffset, bar.Width - width));
             var bounds = new Rectangle(x, bar.Top, width, bar.Height);
@@ -196,7 +287,8 @@ namespace AudioFlipper
             }
             if (!Visible)
                 Show();
-            flyout.SetAnchor(AudioBounds);
+            if (flyout.Visible)
+                flyout.SetAnchor(SectionScreenBounds(flyoutPart));
 
             // The taskbar comes to the front whenever it's clicked; stay above it.
             NativeMethods.SetWindowPos(Handle, NativeMethods.HwndTopmost, 0, 0, 0, 0,
@@ -207,29 +299,62 @@ namespace AudioFlipper
         // the corner, so start just to its right. With left-aligned icons the middle is free.
         int DefaultOffset(int barWidth, int width) => Taskbar.IconsAreLeftAligned() ? (barWidth - width) / 2 : Px(180);
 
+        void LayOutSections()
+        {
+            var laidOut = new List<Section>();
+            int x = 0;
+            void Add(Part part, int width)
+            {
+                laidOut.Add(new Section { Part = part, X = x, Width = width });
+                x += width;
+            }
+
+            if (showOutput)
+                Add(Part.Output, MeasureAudioWidth(NameOf(Part.Output)));
+            if (showInput)
+                Add(Part.Input, MeasureAudioWidth(NameOf(Part.Input)));
+            if (webcam != null)
+                Add(Part.Webcam, Px(WebcamLogicalWidth));
+            sections = laidOut.ToArray();
+        }
+
+        string NameOf(Part part)
+        {
+            AudioStatus status = StatusOf(part);
+            if (status != null)
+                return status.Device.Name;
+            return part == Part.Input ? "No input device" : "No output device";
+        }
+
+        AudioStatus StatusOf(Part part) => part == Part.Output ? output : part == Part.Input ? input : null;
+
+        static EDataFlow? FlowOf(Part part) =>
+            part == Part.Output ? EDataFlow.Render : part == Part.Input ? EDataFlow.Capture : (EDataFlow?)null;
+
         /// <summary>Fits the device name, like the weather widget sizes itself to its text.</summary>
-        int MeasureAudioWidth()
+        int MeasureAudioWidth(string name)
         {
-            string name = status?.Device.Name ?? "No output device";
-            if (name != measuredName)
+            if (!measuredWidths.TryGetValue(name, out int width))
             {
-                measuredName = name;
-                measuredWidth = Math.Max(Px(MinLogicalWidth), Math.Min(Px(MaxLogicalWidth), Px(44) + MeasureText(name, nameFont) + Px(20)));
+                using (var measuring = new Bitmap(1, 1))
+                using (Graphics graphics = Graphics.FromImage(measuring))
+                {
+                    graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                    int textWidth = (int)Math.Ceiling(graphics.MeasureString(name, nameFont, PointF.Empty, StringFormat.GenericTypographic).Width);
+                    width = Math.Max(Px(MinAudioLogicalWidth), Math.Min(Px(MaxAudioLogicalWidth), Px(44) + textWidth + Px(20)));
+                }
+                measuredWidths[name] = width;
             }
-            return measuredWidth;
+            return width;
         }
 
-        static int MeasureText(string text, Font font)
-        {
-            using (var measuring = new Bitmap(1, 1))
-            using (Graphics graphics = Graphics.FromImage(measuring))
-            {
-                graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                return (int)Math.Ceiling(graphics.MeasureString(text, font, PointF.Empty, StringFormat.GenericTypographic).Width);
-            }
-        }
+        Part PartAt(Point clientPoint) => sections.FirstOrDefault(s => clientPoint.X >= s.X && clientPoint.X < s.X + s.Width)?.Part ?? Part.None;
 
-        Part PartAt(Point clientPoint) => webcam != null && clientPoint.X >= audioWidth ? Part.Webcam : Part.Audio;
+        Rectangle SectionScreenBounds(Part part)
+        {
+            Section section = sections.FirstOrDefault(s => s.Part == part);
+            return section == null ? Rectangle.Empty : new Rectangle(Left + section.X, Top, section.Width, Height);
+        }
 
         void Render()
         {
@@ -237,9 +362,7 @@ namespace AudioFlipper
                 return;
 
             Color foreground = lightTaskbar ? Color.FromArgb(28, 28, 28) : Color.White;
-            Color secondary = lightTaskbar ? Color.FromArgb(90, 90, 90) : Color.FromArgb(205, 205, 205);
-            Color accent = lightTaskbar ? Color.FromArgb(0, 95, 184) : Color.FromArgb(96, 205, 255);
-            Color track = Color.FromArgb(lightTaskbar ? 60 : 80, foreground);
+            Color highlight = Color.FromArgb(lightTaskbar ? 18 : 24, foreground);
 
             using (var bitmap = new Bitmap(Width, Height, PixelFormat.Format32bppArgb))
             {
@@ -250,55 +373,71 @@ namespace AudioFlipper
                     graphics.SmoothingMode = SmoothingMode.AntiAlias;
                     graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
-                    Color highlight = Color.FromArgb(lightTaskbar ? 18 : 24, foreground);
-                    int audioRight = webcam != null ? audioWidth : Width;
                     if (dragging)
                         Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(Px(2), Px(4), Width - Px(4), Height - Px(8)), Px(4));
-                    else if (hovered == Part.Audio)
-                        Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(Px(2), Px(4), audioRight - Px(4), Height - Px(8)), Px(4));
-                    else if (hovered == Part.Webcam)
-                        Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(audioRight + Px(2), Px(4), Width - audioRight - Px(4), Height - Px(8)), Px(4));
 
-                    int middle = Height / 2;
-                    int iconSize = Px(24);
-                    DeviceIcons.Draw(graphics, status, new Rectangle(Px(10), middle - iconSize / 2, iconSize, iconSize), foreground);
-
-                    float textLeft = Px(44);
-                    float textWidth = audioRight - textLeft - Px(10);
-                    using (var format = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter, LineAlignment = StringAlignment.Center })
-                    using (var foregroundBrush = new SolidBrush(foreground))
-                    using (var secondaryBrush = new SolidBrush(secondary))
+                    for (int i = 0; i < sections.Length; i++)
                     {
-                        string name = status?.Device.Name ?? "No output device";
-                        graphics.DrawString(name, nameFont, foregroundBrush, new RectangleF(textLeft, middle - Px(18), textWidth, Px(18)), format);
-
-                        if (status != null)
+                        Section section = sections[i];
+                        bool isHovered = !dragging && hovered == section.Part;
+                        if (isHovered)
                         {
-                            // Second line, like the weather widget's "Sunny": "45%" followed by a level bar.
-                            float labelWidth = Px(38);
-                            graphics.DrawString(status.Muted ? "Muted" : status.VolumePercent + "%", volumeFont, secondaryBrush,
-                                new RectangleF(textLeft, middle + Px(1), labelWidth + Px(8), Px(17)), format);
-
-                            var bar = new RectangleF(textLeft + labelWidth + Px(4), middle + Px(8), textWidth - labelWidth - Px(4), Math.Max(2, Px(3)));
-                            Shapes.FillPill(graphics, track, bar);
-                            if (!status.Muted)
-                                Shapes.FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, status.VolumePercent) / 100f, bar.Height));
+                            Shapes.FillRoundedRectangle(graphics, highlight,
+                                new RectangleF(section.X + Px(2), Px(4), section.Width - Px(4), Height - Px(8)), Px(4));
+                        }
+                        if (i > 0)
+                        {
+                            using (var divider = new Pen(Color.FromArgb(lightTaskbar ? 50 : 60, foreground), 1f))
+                                graphics.DrawLine(divider, section.X, Px(14), section.X, Height - Px(14));
                         }
 
-                        if (webcam != null)
+                        if (section.Part == Part.Webcam)
                         {
-                            // A thin divider, then the camera icon, struck through when off.
-                            using (var divider = new Pen(Color.FromArgb(lightTaskbar ? 50 : 60, foreground), 1f))
-                                graphics.DrawLine(divider, audioRight, Px(14), audioRight, Height - Px(14));
-
                             Color iconColor = webcam.Busy ? Color.FromArgb(110, foreground) : foreground;
-                            Color behindIcon = !dragging && hovered == Part.Webcam ? highlight : Color.FromArgb(1, 0, 0, 0);
+                            Color behindIcon = isHovered ? highlight : Color.FromArgb(1, 0, 0, 0);
                             int camera = Px(20);
-                            DrawWebcamIcon(graphics, new RectangleF(audioRight + Px(12), middle - camera / 2f, camera, camera), iconColor, !webcam.Enabled, behindIcon);
+                            DrawWebcamIcon(graphics, new RectangleF(section.X + Px(12), Height / 2 - camera / 2f, camera, camera),
+                                iconColor, !webcam.Enabled, behindIcon);
+                        }
+                        else
+                        {
+                            DrawAudioSection(graphics, section, StatusOf(section.Part), NameOf(section.Part), foreground);
                         }
                     }
                 }
                 NativeMethods.SetLayeredWindowBitmap(Handle, bitmap, Location);
+            }
+        }
+
+        /// <summary>Device icon, then its name over "45%" and a level bar, like the weather widget's two lines.</summary>
+        void DrawAudioSection(Graphics graphics, Section section, AudioStatus status, string name, Color foreground)
+        {
+            Color secondary = lightTaskbar ? Color.FromArgb(90, 90, 90) : Color.FromArgb(205, 205, 205);
+            Color accent = lightTaskbar ? Color.FromArgb(0, 95, 184) : Color.FromArgb(96, 205, 255);
+            Color track = Color.FromArgb(lightTaskbar ? 60 : 80, foreground);
+
+            int middle = Height / 2;
+            int iconSize = Px(24);
+            DeviceIcons.Draw(graphics, status, new Rectangle(section.X + Px(10), middle - iconSize / 2, iconSize, iconSize), foreground);
+
+            float textLeft = section.X + Px(44);
+            float textWidth = section.X + section.Width - textLeft - Px(10);
+            using (var format = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter, LineAlignment = StringAlignment.Center })
+            using (var foregroundBrush = new SolidBrush(foreground))
+            using (var secondaryBrush = new SolidBrush(secondary))
+            {
+                graphics.DrawString(name, nameFont, foregroundBrush, new RectangleF(textLeft, middle - Px(18), textWidth, Px(18)), format);
+                if (status == null)
+                    return;
+
+                float labelWidth = Px(38);
+                graphics.DrawString(status.Muted ? "Muted" : status.VolumePercent + "%", volumeFont, secondaryBrush,
+                    new RectangleF(textLeft, middle + Px(1), labelWidth + Px(8), Px(17)), format);
+
+                var bar = new RectangleF(textLeft + labelWidth + Px(4), middle + Px(8), textWidth - labelWidth - Px(4), Math.Max(2, Px(3)));
+                Shapes.FillPill(graphics, track, bar);
+                if (!status.Muted)
+                    Shapes.FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, status.VolumePercent) / 100f, bar.Height));
             }
         }
 
@@ -338,11 +477,14 @@ namespace AudioFlipper
                 return;
             hovered = part;
             Render();
-            // Only the audio section opens the volume flyout; an open flyout closes itself once
-            // the mouse is away from it and the audio section.
+            // The output and input sections open the volume flyout after a moment; an open flyout
+            // closes itself once the mouse is away from it and its section.
             hoverTimer.Stop();
-            if (part == Part.Audio)
+            if (FlowOf(part) != null)
+            {
+                hoverTarget = part;
                 hoverTimer.Start();
+            }
         }
 
         protected override void OnMouseEnter(EventArgs e)
@@ -393,6 +535,7 @@ namespace AudioFlipper
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            Part part = PartAt(e.Location);
             switch (e.Button)
             {
                 case MouseButtons.Left:
@@ -405,18 +548,18 @@ namespace AudioFlipper
                         Render();
                         OffsetChanged?.Invoke(this, EventArgs.Empty);
                     }
-                    else if (PartAt(e.Location) == Part.Webcam)
+                    else if (part == Part.Webcam)
                     {
                         WebcamToggleRequested?.Invoke(this, EventArgs.Empty);
                     }
-                    else
+                    else if (FlowOf(part) is EDataFlow flow)
                     {
-                        NextRequested?.Invoke(this, EventArgs.Empty);
+                        NextRequested?.Invoke(this, new AudioFlowEventArgs(flow));
                     }
                     break;
                 case MouseButtons.Middle:
-                    if (PartAt(e.Location) == Part.Audio)
-                        MuteRequested?.Invoke(this, EventArgs.Empty);
+                    if (FlowOf(part) is EDataFlow muteFlow)
+                        MuteRequested?.Invoke(this, new AudioFlowEventArgs(muteFlow));
                     break;
                 case MouseButtons.Right:
                     hoverTimer.Stop();
@@ -433,8 +576,8 @@ namespace AudioFlipper
             wheelRemainder += e.Delta;
             int notches = wheelRemainder / WheelNotch;
             wheelRemainder -= notches * WheelNotch;
-            if (notches != 0)
-                VolumeStepsRequested?.Invoke(this, notches);
+            if (notches != 0 && FlowOf(PartAt(PointToClient(Cursor.Position))) is EDataFlow flow)
+                VolumeStepsRequested?.Invoke(this, new VolumeStepsEventArgs(flow, notches));
         }
 
         protected override void Dispose(bool disposing)

@@ -10,6 +10,7 @@ namespace AudioFlipper.Audio
         Headphones,
         Headset,
         Display,
+        Microphone,
     }
 
     internal sealed class AudioDevice
@@ -41,9 +42,9 @@ namespace AudioFlipper.Audio
         public string IconPath { get; }
     }
 
-    internal sealed class OutputStatus
+    internal sealed class AudioStatus
     {
-        public OutputStatus(AudioDevice device, float volumeLevel, bool muted)
+        public AudioStatus(AudioDevice device, float volumeLevel, bool muted)
         {
             Device = device;
             VolumeLevel = volumeLevel;
@@ -59,7 +60,7 @@ namespace AudioFlipper.Audio
 
         public bool Muted { get; }
 
-        public static bool AreEqual(OutputStatus a, OutputStatus b)
+        public static bool AreEqual(AudioStatus a, AudioStatus b)
         {
             if (a == null || b == null)
                 return a == b;
@@ -74,8 +75,8 @@ namespace AudioFlipper.Audio
     }
 
     /// <summary>
-    /// Lists output devices, reads the default output's volume and changes the default output,
-    /// using the Windows Core Audio API.
+    /// Lists output (Render) and input (Capture) devices, reads the default device's volume and
+    /// changes the default device, using the Windows Core Audio API.
     /// </summary>
     internal sealed class AudioDeviceManager : IDisposable
     {
@@ -96,16 +97,21 @@ namespace AudioFlipper.Audio
 
         readonly IMMDeviceEnumerator enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
 
-        // The default output's volume control is kept between polls and only reactivated when
-        // the default output changes.
-        string volumeDeviceId;
-        IAudioEndpointVolume volume;
+        // The default device's volume control, per direction, is kept between polls and only
+        // reactivated when the default device changes.
+        readonly CachedVolume[] volumes = { new CachedVolume(), new CachedVolume() };
 
-        /// <summary>Enabled, connected output devices, sorted by name.</summary>
-        public List<AudioDevice> GetActiveOutputDevices()
+        sealed class CachedVolume
+        {
+            public string DeviceId;
+            public IAudioEndpointVolume Control;
+        }
+
+        /// <summary>Enabled, connected devices in that direction, sorted by name.</summary>
+        public List<AudioDevice> GetActiveDevices(EDataFlow flow)
         {
             var devices = new List<AudioDevice>();
-            enumerator.EnumAudioEndpoints(EDataFlow.Render, DeviceState.Active, out IMMDeviceCollection collection);
+            enumerator.EnumAudioEndpoints(flow, DeviceState.Active, out IMMDeviceCollection collection);
             try
             {
                 collection.GetCount(out uint count);
@@ -135,10 +141,10 @@ namespace AudioFlipper.Audio
             return devices;
         }
 
-        /// <summary>ID of the default output device, or null if there is none.</summary>
-        public string GetDefaultOutputDeviceId()
+        /// <summary>ID of the default device in that direction, or null if there is none.</summary>
+        public string GetDefaultDeviceId(EDataFlow flow)
         {
-            IMMDevice device = GetDefaultOutputDevice();
+            IMMDevice device = GetDefaultDevice(flow);
             if (device == null)
                 return null;
             try
@@ -152,13 +158,14 @@ namespace AudioFlipper.Audio
             }
         }
 
-        /// <summary>The default output device with its volume, or null if there is none.</summary>
-        public OutputStatus GetDefaultOutputStatus()
+        /// <summary>The default device in that direction with its volume, or null if there is none.</summary>
+        public AudioStatus GetDefaultStatus(EDataFlow flow)
         {
-            IMMDevice device = GetDefaultOutputDevice();
+            CachedVolume cache = volumes[(int)flow];
+            IMMDevice device = GetDefaultDevice(flow);
             if (device == null)
             {
-                ReleaseVolume();
+                ReleaseVolume(cache);
                 return null;
             }
 
@@ -166,23 +173,23 @@ namespace AudioFlipper.Audio
             {
                 // Name and icon are re-read every time so renames in Windows show up straight away.
                 AudioDevice info = ReadDevice(device);
-                if (volume == null || volumeDeviceId != info.Id)
+                if (cache.Control == null || cache.DeviceId != info.Id)
                 {
-                    ReleaseVolume();
+                    ReleaseVolume(cache);
                     Guid iid = AudioEndpointVolumeId;
                     device.Activate(ref iid, ClsCtxAll, IntPtr.Zero, out object endpointVolume);
-                    volume = (IAudioEndpointVolume)endpointVolume;
-                    volumeDeviceId = info.Id;
+                    cache.Control = (IAudioEndpointVolume)endpointVolume;
+                    cache.DeviceId = info.Id;
                 }
 
-                volume.GetMasterVolumeLevelScalar(out float level);
-                volume.GetMute(out bool muted);
-                return new OutputStatus(info, level, muted);
+                cache.Control.GetMasterVolumeLevelScalar(out float level);
+                cache.Control.GetMute(out bool muted);
+                return new AudioStatus(info, level, muted);
             }
             catch (COMException)
             {
                 // Usually the device was unplugged between calls; start over on the next poll.
-                ReleaseVolume();
+                ReleaseVolume(cache);
                 throw;
             }
             finally
@@ -191,7 +198,8 @@ namespace AudioFlipper.Audio
             }
         }
 
-        public void SetDefaultOutputDevice(string id, bool includeCommunications)
+        /// <summary>Makes the device (output or input) the default for its direction.</summary>
+        public void SetDefaultDevice(string id, bool includeCommunications)
         {
             var policyConfig = (IPolicyConfig)new PolicyConfigClientComObject();
             try
@@ -207,44 +215,46 @@ namespace AudioFlipper.Audio
             }
         }
 
-        public void ToggleDefaultOutputMute()
+        public void ToggleDefaultMute(EDataFlow flow)
         {
-            if (GetDefaultOutputStatus() == null)
+            if (GetDefaultStatus(flow) == null)
                 return;
+            IAudioEndpointVolume volume = volumes[(int)flow].Control;
             volume.GetMute(out bool muted);
             Guid eventContext = Guid.Empty;
             volume.SetMute(!muted, ref eventContext);
         }
 
-        /// <summary>Changes the default output's volume by whole percentage points, unmuting when turning it up.</summary>
-        public void ChangeDefaultOutputVolume(int percentagePoints)
+        /// <summary>Changes the default device's volume by whole percentage points, unmuting when turning it up.</summary>
+        public void ChangeDefaultVolume(EDataFlow flow, int percentagePoints)
         {
-            OutputStatus status = GetDefaultOutputStatus();
+            AudioStatus status = GetDefaultStatus(flow);
             if (status != null)
-                SetVolume((status.VolumePercent + percentagePoints) / 100f, unmute: percentagePoints > 0);
+                SetVolume(volumes[(int)flow].Control, (status.VolumePercent + percentagePoints) / 100f, unmute: percentagePoints > 0);
         }
 
         /// <summary>
-        /// Sets the default output's volume (0 to 1), unmuting it like the Windows volume slider does.
+        /// Sets the default device's volume (0 to 1), unmuting it like the Windows volume slider does.
         /// Called for every slider movement, so it reuses the volume control from the last poll
         /// instead of looking the device up again.
         /// </summary>
-        public void SetDefaultOutputVolume(float level)
+        public void SetDefaultVolume(EDataFlow flow, float level)
         {
-            if (volume == null && GetDefaultOutputStatus() == null)
+            CachedVolume cache = volumes[(int)flow];
+            if (cache.Control == null && GetDefaultStatus(flow) == null)
                 return;
             try
             {
-                SetVolume(level, unmute: level > 0);
+                SetVolume(cache.Control, level, unmute: level > 0);
             }
             catch (COMException)
             {
-                ReleaseVolume(); // The device went away; the next poll picks up the new default.
+                ReleaseVolume(cache); // The device went away; the next poll picks up the new default.
                 throw;
             }
         }
 
-        void SetVolume(float level, bool unmute)
+        static void SetVolume(IAudioEndpointVolume volume, float level, bool unmute)
         {
             Guid eventContext = Guid.Empty;
             volume.SetMasterVolumeLevelScalar(Math.Max(0f, Math.Min(1f, level)), ref eventContext);
@@ -258,24 +268,25 @@ namespace AudioFlipper.Audio
 
         public void Dispose()
         {
-            ReleaseVolume();
+            foreach (CachedVolume cache in volumes)
+                ReleaseVolume(cache);
             Release(enumerator);
         }
 
-        IMMDevice GetDefaultOutputDevice()
+        IMMDevice GetDefaultDevice(EDataFlow flow)
         {
-            int hr = enumerator.GetDefaultAudioEndpoint(EDataFlow.Render, ERole.Console, out IMMDevice device);
+            int hr = enumerator.GetDefaultAudioEndpoint(flow, ERole.Console, out IMMDevice device);
             if (hr == ENotFound)
                 return null;
             Marshal.ThrowExceptionForHR(hr);
             return device;
         }
 
-        void ReleaseVolume()
+        static void ReleaseVolume(CachedVolume cache)
         {
-            Release(volume);
-            volume = null;
-            volumeDeviceId = null;
+            Release(cache.Control);
+            cache.Control = null;
+            cache.DeviceId = null;
         }
 
         static AudioDevice ReadDevice(IMMDevice device)
@@ -309,6 +320,8 @@ namespace AudioFlipper.Audio
             {
                 case 3: // Headphones
                     return DeviceKind.Headphones;
+                case 4: // Microphone
+                    return DeviceKind.Microphone;
                 case 5: // Headset
                 case 6: // Handset
                     return DeviceKind.Headset;

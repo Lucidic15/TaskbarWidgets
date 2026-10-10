@@ -10,9 +10,9 @@ using AudioFlipper.Webcams;
 namespace AudioFlipper
 {
     /// <summary>
-    /// Runs the taskbar widget and the notification-area icon. On either, left-click switches to the
-    /// next output, middle-click toggles mute and right-click opens the menu. The widget also changes
-    /// volume with the mouse wheel.
+    /// Runs the taskbar widget and the notification-area icon. The tray icon is for the output:
+    /// left-click switches to the next output, middle-click toggles mute and right-click opens the
+    /// menu. The widget does the same for each of its sections (output, input, webcam).
     /// </summary>
     internal sealed class TrayApp : ApplicationContext
     {
@@ -31,7 +31,8 @@ namespace AudioFlipper
         readonly OsdForm popup = new OsdForm();
         readonly TaskbarStrip strip;
 
-        OutputStatus lastStatus;
+        AudioStatus lastOutput;
+        AudioStatus lastInput;
         bool lastLightTaskbar;
         bool hasRefreshed;
         bool webcamBusy;
@@ -55,10 +56,10 @@ namespace AudioFlipper
             trayIcon.MouseDoubleClick += OnTrayIconClick;
 
             strip = new TaskbarStrip(settings.TaskbarOffset);
-            strip.NextRequested += (sender, e) => SwitchToNext();
-            strip.MuteRequested += (sender, e) => ToggleMute();
-            strip.VolumeStepsRequested += (sender, steps) => ChangeVolume(steps * VolumeStepPercent);
-            strip.VolumeChangeRequested += (sender, level) => SetVolume(level);
+            strip.NextRequested += (sender, e) => SwitchToNext(e.Flow);
+            strip.MuteRequested += (sender, e) => ToggleMute(e.Flow);
+            strip.VolumeStepsRequested += (sender, e) => ChangeVolume(e.Flow, e.Notches * VolumeStepPercent);
+            strip.VolumeChangeRequested += (sender, e) => SetVolume(e.Flow, e.Level);
             strip.MenuRequested += (sender, e) => ShowMenuFromStrip();
             strip.WebcamToggleRequested += (sender, e) => ToggleWebcam();
             strip.OffsetChanged += (sender, e) =>
@@ -81,54 +82,57 @@ namespace AudioFlipper
             RefreshStatus(false);
             RefreshWebcam();
             trayIcon.Visible = true;
-            strip.SetShowOnTaskbar(settings.ShowOnTaskbar);
+            strip.SetSections(settings.ShowOutput, settings.ShowInput);
             refreshTimer.Start();
         }
 
         void OnTrayIconClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
-                SwitchToNext();
+                SwitchToNext(EDataFlow.Render);
             else if (e.Button == MouseButtons.Middle)
-                ToggleMute();
+                ToggleMute(EDataFlow.Render);
         }
 
-        void SwitchToNext()
+        void SwitchToNext(EDataFlow flow)
         {
             try
             {
-                if (OutputCycler.SwitchToNext(audio, settings) == null)
+                if (DeviceCycler.SwitchToNext(audio, flow, settings) == null)
                 {
-                    popup.ShowMessage("No output devices", "Enable an output in Windows Sound settings.");
+                    if (flow == EDataFlow.Render)
+                        popup.ShowMessage("No output devices", "Enable an output in Windows Sound settings.");
+                    else
+                        popup.ShowMessage("No input devices", "Enable a microphone in Windows Sound settings.");
                     return;
                 }
-                RefreshStatus(true);
+                RefreshStatus(flow == EDataFlow.Render);
             }
             catch (Exception ex)
             {
-                popup.ShowMessage("Couldn't switch output", ex.Message);
+                popup.ShowMessage(flow == EDataFlow.Render ? "Couldn't switch output" : "Couldn't switch input", ex.Message);
             }
         }
 
-        void SwitchTo(string deviceId)
+        void SwitchTo(string deviceId, EDataFlow flow)
         {
             try
             {
-                audio.SetDefaultOutputDevice(deviceId, settings.SwitchCommunications);
-                RefreshStatus(true);
+                audio.SetDefaultDevice(deviceId, settings.SwitchesCommunications(flow));
+                RefreshStatus(flow == EDataFlow.Render);
             }
             catch (Exception ex)
             {
-                popup.ShowMessage("Couldn't switch output", ex.Message);
+                popup.ShowMessage(flow == EDataFlow.Render ? "Couldn't switch output" : "Couldn't switch input", ex.Message);
             }
         }
 
-        void ToggleMute()
+        void ToggleMute(EDataFlow flow)
         {
             try
             {
-                audio.ToggleDefaultOutputMute();
-                RefreshStatus(true);
+                audio.ToggleDefaultMute(flow);
+                RefreshStatus(flow == EDataFlow.Render);
             }
             catch (Exception ex)
             {
@@ -136,11 +140,11 @@ namespace AudioFlipper
             }
         }
 
-        void SetVolume(float level)
+        void SetVolume(EDataFlow flow, float level)
         {
             try
             {
-                audio.SetDefaultOutputVolume(level);
+                audio.SetDefaultVolume(flow, level);
                 RefreshSoon();
             }
             catch (Exception ex)
@@ -149,11 +153,11 @@ namespace AudioFlipper
             }
         }
 
-        void ChangeVolume(int percentagePoints)
+        void ChangeVolume(EDataFlow flow, int percentagePoints)
         {
             try
             {
-                audio.ChangeDefaultOutputVolume(percentagePoints);
+                audio.ChangeDefaultVolume(flow, percentagePoints);
                 RefreshSoon();
             }
             catch (Exception ex)
@@ -171,47 +175,51 @@ namespace AudioFlipper
         }
 
         /// <summary>
-        /// Polls the default output and its volume, updating the widget, icon and tooltip when
-        /// anything changed. The popup is shown when asked to, or when the output was changed elsewhere
-        /// (Windows settings, plugging in headphones, "AudioFlipper.exe --next"), but only while the
-        /// taskbar widget isn't showing, since the widget already shows the same thing.
+        /// Polls the default output and input with their volumes, updating the widget, icon and
+        /// tooltip when anything changed. The popup is for the output: it's shown when asked to, or
+        /// when the output was changed elsewhere (Windows settings, plugging in headphones,
+        /// "AudioFlipper.exe --next"), but only while the widget isn't showing the output already.
         /// </summary>
         void RefreshStatus(bool showPopup)
         {
-            OutputStatus status;
-            try
-            {
-                status = audio.GetDefaultOutputStatus();
-            }
-            catch (Exception)
-            {
-                // Typically a device disappearing mid-poll; keep what's shown and try again on the
-                // next tick. The very first poll still needs an icon, though.
-                if (hasRefreshed)
-                    return;
-                status = null;
-            }
+            // On an error (typically a device disappearing mid-poll) keep what's shown and try
+            // again on the next tick.
+            AudioStatus output = PollStatus(EDataFlow.Render, lastOutput);
+            AudioStatus input = settings.ShowInput ? PollStatus(EDataFlow.Capture, lastInput) : null;
 
             bool lightTaskbar = Theme.TaskbarUsesLightTheme();
-            bool deviceChanged = hasRefreshed && status?.Device.Id != lastStatus?.Device.Id;
+            bool outputChanged = hasRefreshed && output?.Device.Id != lastOutput?.Device.Id;
 
             bool themeChanged = !hasRefreshed || lightTaskbar != lastLightTaskbar;
-            if (themeChanged || !OutputStatus.AreEqual(status, lastStatus))
-                strip.SetStatus(status, lightTaskbar);
-            if (themeChanged || TrayIconDiffers(status, lastStatus))
-                UpdateTrayIcon(status, lightTaskbar);
-            UpdateTrayTooltip(status);
+            if (themeChanged || !AudioStatus.AreEqual(output, lastOutput) || !AudioStatus.AreEqual(input, lastInput))
+                strip.SetStatus(output, input, lightTaskbar);
+            if (themeChanged || TrayIconDiffers(output, lastOutput))
+                UpdateTrayIcon(output, lightTaskbar);
+            UpdateTrayTooltip(output);
 
-            lastStatus = status;
+            lastOutput = output;
+            lastInput = input;
             lastLightTaskbar = lightTaskbar;
             hasRefreshed = true;
 
-            if ((showPopup || deviceChanged) && settings.ShowPopup && !strip.Visible)
-                popup.ShowStatus(status);
+            if ((showPopup || outputChanged) && settings.ShowPopup && !strip.ShowsOutput)
+                popup.ShowStatus(output);
+        }
+
+        AudioStatus PollStatus(EDataFlow flow, AudioStatus last)
+        {
+            try
+            {
+                return audio.GetDefaultStatus(flow);
+            }
+            catch (Exception)
+            {
+                return last;
+            }
         }
 
         // The tray icon shows the device's icon and whether it's muted, not the volume level.
-        static bool TrayIconDiffers(OutputStatus a, OutputStatus b)
+        static bool TrayIconDiffers(AudioStatus a, AudioStatus b)
         {
             if (a == null || b == null)
                 return a != b;
@@ -219,14 +227,14 @@ namespace AudioFlipper
                 || a.Device.Kind != b.Device.Kind || a.Muted != b.Muted;
         }
 
-        void UpdateTrayIcon(OutputStatus status, bool lightTaskbar)
+        void UpdateTrayIcon(AudioStatus status, bool lightTaskbar)
         {
             Icon previous = trayIcon.Icon;
             trayIcon.Icon = IconRenderer.Render(status, lightTaskbar);
             previous?.Dispose();
         }
 
-        void UpdateTrayTooltip(OutputStatus status)
+        void UpdateTrayTooltip(AudioStatus status)
         {
             string text = BuildTooltip(status);
             // Every change is a call into Explorer; while the volume is changing quickly, let the
@@ -237,7 +245,7 @@ namespace AudioFlipper
             lastTooltipUpdate = Environment.TickCount;
         }
 
-        static string BuildTooltip(OutputStatus status)
+        static string BuildTooltip(AudioStatus status)
         {
             if (status == null)
                 return "AudioFlipper: no output device";
@@ -260,31 +268,64 @@ namespace AudioFlipper
 
         void RebuildMenu()
         {
-            ToolStripItem[] oldItems = menu.Items.Cast<ToolStripItem>().ToArray();
-            menu.Items.Clear();
-            foreach (ToolStripItem item in oldItems)
+            DisposeMenuItems(menu.Items);
+            menu.Items.Add(BuildAudioMenu(EDataFlow.Render));
+            menu.Items.Add(BuildAudioMenu(EDataFlow.Capture));
+            menu.Items.Add(BuildWebcamMenu());
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Exit", null, (sender, e) => ExitThread());
+        }
+
+        // Disposes the previous menu, including the copies of device icons the items show.
+        static void DisposeMenuItems(ToolStripItemCollection items)
+        {
+            foreach (ToolStripItem item in items.Cast<ToolStripItem>().ToArray())
             {
+                if (item is ToolStripDropDownItem dropDownItem)
+                    DisposeMenuItems(dropDownItem.DropDownItems);
                 item.Image?.Dispose();
                 item.Dispose();
             }
+        }
+
+        /// <summary>The Output or Input submenu: showing it on the widget, the devices and their settings.</summary>
+        ToolStripMenuItem BuildAudioMenu(EDataFlow flow)
+        {
+            bool isOutput = flow == EDataFlow.Render;
+            var submenu = new ToolStripMenuItem(isOutput ? "Output" : "Input");
+            ToolStripItemCollection items = submenu.DropDownItems;
+
+            items.Add(Toggle("Show on taskbar", isOutput ? settings.ShowOutput : settings.ShowInput, value =>
+            {
+                if (isOutput)
+                    settings.ShowOutput = value;
+                else
+                    settings.ShowInput = value;
+                // Poll first so a newly shown section appears with its device straight away.
+                RefreshStatus(false);
+                strip.SetSections(settings.ShowOutput, settings.ShowInput);
+            }));
+            items.Add(new ToolStripSeparator());
 
             List<AudioDevice> devices;
             string currentId;
             try
             {
-                devices = audio.GetActiveOutputDevices();
-                currentId = audio.GetDefaultOutputDeviceId();
+                devices = audio.GetActiveDevices(flow);
+                currentId = audio.GetDefaultDeviceId(flow);
             }
             catch (Exception ex)
             {
                 devices = new List<AudioDevice>();
                 currentId = null;
-                menu.Items.Add(new ToolStripMenuItem("Error: " + ex.Message) { Enabled = false });
+                items.Add(new ToolStripMenuItem("Error: " + ex.Message) { Enabled = false });
             }
 
-            menu.Items.Add(new ToolStripMenuItem("Output device") { Enabled = false });
+            items.Add(new ToolStripMenuItem(isOutput ? "Output device" : "Input device") { Enabled = false });
             if (devices.Count == 0)
-                menu.Items.Add(new ToolStripMenuItem("No active outputs") { Enabled = false });
+                items.Add(new ToolStripMenuItem(isOutput ? "No active outputs" : "No active inputs") { Enabled = false });
             foreach (AudioDevice device in devices)
             {
                 string id = device.Id;
@@ -296,36 +337,32 @@ namespace AudioFlipper
                     // A copy, because menu items may dispose their image and the icon is cached.
                     Image = icon != null ? new Bitmap(icon) : null,
                 };
-                item.Click += (sender, e) => SwitchTo(id);
-                menu.Items.Add(item);
+                item.Click += (sender, e) => SwitchTo(id, flow);
+                items.Add(item);
             }
 
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Rename or change device icons…", null, (sender, e) => OpenSoundControlPanel());
-            menu.Items.Add("Sound settings…", null, (sender, e) => OpenSoundSettings());
-
-            menu.Items.Add(new ToolStripSeparator());
+            items.Add(new ToolStripSeparator());
             var rotation = new ToolStripMenuItem("Include in click rotation") { Enabled = devices.Count > 0 };
             foreach (AudioDevice device in devices)
             {
                 string id = device.Id;
                 rotation.DropDownItems.Add(Toggle(device.FullName, !settings.IsExcluded(id), include => settings.SetExcluded(id, !include)));
             }
-            menu.Items.Add(rotation);
-            menu.Items.Add(Toggle("Show on taskbar", settings.ShowOnTaskbar, value =>
+            items.Add(rotation);
+            items.Add(Toggle("Also switch communications device", settings.SwitchesCommunications(flow), value =>
             {
-                settings.ShowOnTaskbar = value;
-                strip.SetShowOnTaskbar(value);
+                if (isOutput)
+                    settings.SwitchCommunications = value;
+                else
+                    settings.SwitchInputCommunications = value;
             }));
-            menu.Items.Add(Toggle("Also switch communications device", settings.SwitchCommunications, value => settings.SwitchCommunications = value));
-            menu.Items.Add(Toggle("Show popup on change", settings.ShowPopup, value => settings.ShowPopup = value));
-            menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
+            if (isOutput)
+                items.Add(Toggle("Show popup on change", settings.ShowPopup, value => settings.ShowPopup = value));
 
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(BuildWebcamMenu());
-
-            menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("Exit", null, (sender, e) => ExitThread());
+            items.Add(new ToolStripSeparator());
+            items.Add("Rename or change device icons…", null, (sender, e) => OpenSoundControlPanel(flow));
+            items.Add("Sound settings…", null, (sender, e) => OpenSoundSettings());
+            return submenu;
         }
 
         ToolStripMenuItem BuildWebcamMenu()
@@ -341,7 +378,7 @@ namespace AudioFlipper
             }
 
             var webcamMenu = new ToolStripMenuItem("Webcam");
-            webcamMenu.DropDownItems.Add(Toggle("Show webcam on taskbar", settings.ShowWebcam, value =>
+            webcamMenu.DropDownItems.Add(Toggle("Show on taskbar", settings.ShowWebcam, value =>
             {
                 settings.ShowWebcam = value;
                 if (value && string.IsNullOrEmpty(settings.WebcamId) && webcams.Count > 0)
@@ -524,9 +561,10 @@ namespace AudioFlipper
             }
         }
 
-        // The classic Sound control panel (Playback tab), where a device can be renamed or given a
-        // different icon via right-click > Properties. AudioFlipper picks up changes within a second.
-        void OpenSoundControlPanel() => Launch("control.exe", "mmsys.cpl,,0", "Couldn't open the Sound control panel");
+        // The classic Sound control panel (Playback or Recording tab), where a device can be renamed or
+        // given a different icon via right-click > Properties. AudioFlipper picks up changes within a second.
+        void OpenSoundControlPanel(EDataFlow flow) =>
+            Launch("control.exe", flow == EDataFlow.Render ? "mmsys.cpl,,0" : "mmsys.cpl,,1", "Couldn't open the Sound control panel");
 
         void OpenSoundSettings() => Launch("ms-settings:sound", null, "Couldn't open Sound settings");
 
@@ -546,7 +584,8 @@ namespace AudioFlipper
         {
             refreshTimer.Stop();
             volumeRefreshTimer.Stop();
-            strip.SetShowOnTaskbar(false);
+            strip.SetSections(false, false);
+            strip.SetWebcam(null);
             trayIcon.Visible = false;
             base.ExitThreadCore();
         }

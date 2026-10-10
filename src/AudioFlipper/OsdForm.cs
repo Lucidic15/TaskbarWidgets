@@ -18,7 +18,7 @@ namespace AudioFlipper
         readonly Font titleFont = new Font("Segoe UI Semibold", 10.5f);
         readonly Font detailFont = new Font("Segoe UI", 9f);
 
-        OutputStatus status; // Null while showing a message.
+        AudioStatus status; // Null while showing a message.
         string title = "";
         string detail = "";
 
@@ -32,7 +32,7 @@ namespace AudioFlipper
             };
         }
 
-        public void ShowStatus(OutputStatus status)
+        public void ShowStatus(AudioStatus status)
         {
             if (status == null)
             {
