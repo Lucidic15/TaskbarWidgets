@@ -40,6 +40,7 @@ namespace AudioFlipper
 
         public TrayApp()
         {
+            StartupRegistration.RepairMovedExe();
             lastTooltipUpdate = Environment.TickCount - TooltipUpdateMilliseconds;
             menu.ImageScalingSize = SystemInformation.SmallIconSize;
             menu.Items.Add("Loading…"); // Replaced every time the menu opens.
