@@ -13,7 +13,7 @@ namespace AudioFlipper
     /// </summary>
     internal static class IconRenderer
     {
-        public static Icon Render(OutputStatus status, bool lightTaskbar)
+        public static Icon Render(AudioStatus status, bool lightTaskbar)
         {
             int size = Math.Max(16, SystemInformation.SmallIconSize.Width);
             Color glyphColor = lightTaskbar ? Color.FromArgb(28, 28, 28) : Color.White;

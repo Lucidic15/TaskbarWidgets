@@ -46,12 +46,22 @@ namespace AudioFlipper
             }
         }
 
-        /// <summary>Whether a full-screen app (game, video, presentation) is in front on the given monitor.</summary>
-        public static bool IsFullScreenAppActive(Rectangle monitor, IntPtr ignoreWindow)
+        public static IntPtr FindWindow() => NativeMethods.FindWindow("Shell_TrayWnd", null);
+
+        /// <summary>
+        /// Whether a full-screen app (game, video, presentation) is in front on the given monitor.
+        /// <paramref name="shellReportsFullScreen"/> is Windows' own verdict (the notification that
+        /// makes the taskbar step aside). Screen overlays such as screenshot tools also cover the whole
+        /// screen, but Windows doesn't count them, so neither does this.
+        /// </summary>
+        public static bool IsFullScreenAppActive(Rectangle monitor, IntPtr ignoreWindow, bool shellReportsFullScreen)
         {
             if (NativeMethods.SHQueryUserNotificationState(out int state) == 0 && state == NativeMethods.QunsRunningD3DFullScreen)
                 return true;
+            if (!shellReportsFullScreen)
+                return false;
 
+            // The notification doesn't say which monitor, so also check the app in front covers this one.
             IntPtr window = NativeMethods.GetForegroundWindow();
             if (window == IntPtr.Zero || window == ignoreWindow || !NativeMethods.GetWindowRect(window, out NativeMethods.Rect rect))
                 return false;

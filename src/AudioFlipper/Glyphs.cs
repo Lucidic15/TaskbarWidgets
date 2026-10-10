@@ -11,18 +11,20 @@ namespace AudioFlipper
     internal static class Glyphs
     {
         // Code points shared by Segoe Fluent Icons (Windows 11) and Segoe MDL2 Assets (Windows 10).
-        public const string Speakers = "";
-        public const string Headphones = "";
-        public const string Headset = "";
-        public const string Display = "";
-        public const string Mute = "";
-        public const string Warning = "";
+        public const string Speakers = "\uE7F5";
+        public const string Headphones = "\uE7F6";
+        public const string Headset = "\uE95B";
+        public const string Display = "\uE7F4";
+        public const string Microphone = "\uE720";
+        public const string Mute = "\uE74F";
+        public const string Warning = "\uE7BA";
 
         static readonly string IconFontName = FindIconFont();
 
-        public static string For(OutputStatus status)
+        /// <summary>The glyph for the device's kind; the mute glyph when there's no device.</summary>
+        public static string For(AudioStatus status)
         {
-            if (status == null || status.Muted)
+            if (status == null)
                 return Mute;
 
             switch (status.Device.Kind)
@@ -33,6 +35,8 @@ namespace AudioFlipper
                     return Headset;
                 case DeviceKind.Display:
                     return Display;
+                case DeviceKind.Microphone:
+                    return Microphone;
                 default:
                     return Speakers;
             }
