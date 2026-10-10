@@ -87,7 +87,7 @@ AudioFlipper targets .NET Framework 4.8, which is part of Windows 10 and 11, so 
 else to install.
 
 - **Download:** get `AudioFlipper.exe` from the latest release on the repository's
-  [Releases](https://github.com/Lucidic15/AudtioFlipper/releases/latest) page. Put it somewhere it can stay (for example a folder in
+  [Releases](https://github.com/Lucidic15/AudioFlipper/releases/latest) page. Put it somewhere it can stay (for example a folder in
   Documents) and double-click it. Windows SmartScreen may warn about an unsigned app; choose
   **More info → Run anyway**. Builds of every change are also on the **Actions** tab.
 - **Build it yourself:** install the [.NET SDK](https://dotnet.microsoft.com/download) and run
