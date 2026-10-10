@@ -14,8 +14,8 @@ namespace AudioFlipper
     /// output's icon, name and volume.
     /// Click to switch output, scroll to change volume, middle-click to mute, right-click for the menu,
     /// and drag to move it along the taskbar. Hovering opens a flyout with a volume slider.
-    /// Optionally, a webcam section on the right shows whether a chosen webcam is on, and turns it
-    /// on or off when clicked.
+    /// Optionally, a webcam section on the right shows whether a chosen webcam is on (a camera icon,
+    /// struck through when off), and turns it on or off when clicked.
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
@@ -30,7 +30,6 @@ namespace AudioFlipper
         const int WsExNoActivate = 0x08000000;
         const int MinLogicalWidth = 140;
         const int MaxLogicalWidth = 260;
-        const int MaxWebcamNameLogicalWidth = 160;
         const int PlacementIntervalMilliseconds = 250;
         const int HoverDelayMilliseconds = 400;
         const int WheelNotch = 120;
@@ -66,8 +65,6 @@ namespace AudioFlipper
         int wheelRemainder;
         string measuredName;
         int measuredWidth;
-        string measuredWebcamName;
-        int measuredWebcamWidth;
 
         public TaskbarStrip(int offset)
         {
@@ -186,7 +183,7 @@ namespace AudioFlipper
             }
 
             audioWidth = MeasureAudioWidth();
-            int width = Math.Min(audioWidth + MeasureWebcamWidth(), bar.Width);
+            int width = Math.Min(audioWidth + (webcam != null ? Px(44) : 0), bar.Width);
             int preferredOffset = offset >= 0 ? offset : DefaultOffset(bar.Width, width);
             int x = bar.Left + Math.Max(0, Math.Min(preferredOffset, bar.Width - width));
             var bounds = new Rectangle(x, bar.Top, width, bar.Height);
@@ -220,21 +217,6 @@ namespace AudioFlipper
                 measuredWidth = Math.Max(Px(MinLogicalWidth), Math.Min(Px(MaxLogicalWidth), Px(44) + MeasureText(name, nameFont) + Px(20)));
             }
             return measuredWidth;
-        }
-
-        /// <summary>Just the camera icon while the webcam is off; the icon and its name while it's on.</summary>
-        int MeasureWebcamWidth()
-        {
-            if (webcam == null)
-                return 0;
-            if (!webcam.Enabled)
-                return Px(44);
-            if (webcam.Name != measuredWebcamName)
-            {
-                measuredWebcamName = webcam.Name;
-                measuredWebcamWidth = Px(40) + Math.Min(Px(MaxWebcamNameLogicalWidth), MeasureText(webcam.Name, volumeFont)) + Px(18);
-            }
-            return measuredWebcamWidth;
         }
 
         static int MeasureText(string text, Font font)
@@ -305,7 +287,7 @@ namespace AudioFlipper
 
                         if (webcam != null)
                         {
-                            // A thin divider, then the camera icon (struck through when off) and, when on, its name.
+                            // A thin divider, then the camera icon, struck through when off.
                             using (var divider = new Pen(Color.FromArgb(lightTaskbar ? 50 : 60, foreground), 1f))
                                 graphics.DrawLine(divider, audioRight, Px(14), audioRight, Height - Px(14));
 
@@ -313,15 +295,6 @@ namespace AudioFlipper
                             Color behindIcon = !dragging && hovered == Part.Webcam ? highlight : Color.FromArgb(1, 0, 0, 0);
                             int camera = Px(20);
                             DrawWebcamIcon(graphics, new RectangleF(audioRight + Px(12), middle - camera / 2f, camera, camera), iconColor, !webcam.Enabled, behindIcon);
-
-                            if (webcam.Enabled)
-                            {
-                                using (var nameBrush = new SolidBrush(iconColor))
-                                {
-                                    graphics.DrawString(webcam.Name, volumeFont, nameBrush,
-                                        new RectangleF(audioRight + Px(40), middle - Px(9), Width - audioRight - Px(40) - Px(10), Px(18)), format);
-                                }
-                            }
                         }
                     }
                 }

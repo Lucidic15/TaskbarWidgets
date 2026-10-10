@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using AudioFlipper.Audio;
+using AudioFlipper.Webcams;
 
 namespace AudioFlipper
 {
@@ -13,6 +14,11 @@ namespace AudioFlipper
         {
             if (args.Any(arg => string.Equals(arg, "--next", StringComparison.OrdinalIgnoreCase)))
                 return SwitchOnce();
+
+            // One-time elevated runs that set up or remove the webcam tasks.
+            int? webcamTasksResult = WebcamTasks.HandleElevatedCommand(args);
+            if (webcamTasksResult != null)
+                return webcamTasksResult.Value;
 
             using (new Mutex(true, @"Local\AudioFlipper.SingleInstance", out bool isFirstInstance))
             {

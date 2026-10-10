@@ -33,6 +33,12 @@ namespace AudioFlipper
         /// <summary>Name of the webcam to control, kept so it can be shown without looking the device up.</summary>
         public string WebcamName { get; set; }
 
+        /// <summary>
+        /// The webcam the no-prompt scheduled tasks were set up for (see WebcamTasks), or null
+        /// when they aren't set up.
+        /// </summary>
+        public string WebcamTasksId { get; set; }
+
         public bool IsExcluded(string deviceId) => excludedDeviceIds.Contains(deviceId);
 
         public void SetExcluded(string deviceId, bool excluded)
@@ -79,6 +85,9 @@ namespace AudioFlipper
                         case "WebcamName":
                             settings.WebcamName = value;
                             break;
+                        case "WebcamTasksId":
+                            settings.WebcamTasksId = value.Length > 0 ? value : null;
+                            break;
                         case "TaskbarOffset":
                             if (int.TryParse(value, out int offset))
                                 settings.TaskbarOffset = offset;
@@ -108,6 +117,7 @@ namespace AudioFlipper
                 "ShowWebcam=" + ShowWebcam,
                 "WebcamId=" + WebcamId,
                 "WebcamName=" + WebcamName,
+                "WebcamTasksId=" + WebcamTasksId,
             };
             foreach (string id in excludedDeviceIds)
                 lines.Add("Exclude=" + id);

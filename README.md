@@ -37,15 +37,20 @@ AudioFlipper can also turn a webcam on and off from the taskbar widget. Turn it 
 **Webcam → Show webcam on taskbar** in the right-click menu, and pick the webcam to control from the
 list in the same menu.
 
-The widget then gets a camera section on its right: a camera icon with a slash through it while the
-webcam is off, and the icon with the webcam's name while it's on. Click it to switch. **Webcam →
-Camera settings…** opens the camera page in Windows Settings.
+The widget then gets a camera icon on its right, with a slash through it while the webcam is off.
+Click it to switch. **Webcam → Camera settings…** opens the camera page in Windows Settings.
 
 Turning the webcam off works like **Disable device** in Device Manager: no app can use it until it's
-turned back on. Windows only lets administrators do that, so each switch shows a Windows prompt
-asking to allow "PnP Utility" (Microsoft's `pnputil.exe`) to make changes. There's no prompt if
-AudioFlipper itself is running as administrator. Webcams that are unplugged don't show on the
-widget.
+turned back on. Windows only lets administrators do that, so by default each switch shows a Windows
+prompt asking to allow "PnP Utility" (Microsoft's `pnputil.exe`) to make changes.
+
+To stop the prompts, choose **Webcam → Switch without asking each time**. That asks once, and sets
+up two scheduled tasks ("AudioFlipper Webcam On" and "AudioFlipper Webcam Off") that run
+`pnputil.exe` from the Windows folder to turn that one webcam on or off. AudioFlipper starts them
+when you click the camera, with no prompt. They can't run anything else. Choosing the option again
+removes them (and asks once more). Picking a different webcam sets them up for that one.
+
+Webcams that are unplugged don't show on the widget.
 
 ## How the taskbar widget works
 

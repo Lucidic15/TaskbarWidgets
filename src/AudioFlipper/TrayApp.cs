@@ -366,6 +366,9 @@ namespace AudioFlipper
                     settings.ShowWebcam = true;
                     SaveSettings();
                     RefreshWebcam();
+                    // The no-prompt tasks are tied to one webcam; set them up for the new one.
+                    if (settings.WebcamTasksId != null && settings.WebcamTasksId != choice.InstanceId)
+                        SetUpWebcamWithoutPrompts(true);
                 };
                 webcamMenu.DropDownItems.Add(item);
             }
@@ -376,9 +379,58 @@ namespace AudioFlipper
             {
                 string action = (selected.Enabled ? "Turn off " : "Turn on ") + selected.Name;
                 webcamMenu.DropDownItems.Add(new ToolStripMenuItem(action, null, (sender, e) => ToggleWebcam()) { Enabled = !webcamBusy });
+
+                bool noPrompt = settings.WebcamTasksId != null && settings.WebcamTasksId == settings.WebcamId;
+                var noPromptItem = new ToolStripMenuItem("Switch without asking each time") { Checked = noPrompt };
+                noPromptItem.Click += (sender, e) => SetUpWebcamWithoutPrompts(!noPrompt);
+                webcamMenu.DropDownItems.Add(noPromptItem);
             }
             webcamMenu.DropDownItems.Add("Camera settings…", null, (sender, e) => Launch("ms-settings:camera", null, "Couldn't open Camera settings"));
             return webcamMenu;
+        }
+
+        /// <summary>
+        /// Sets up (or removes) the scheduled tasks that let the chosen webcam be switched without a
+        /// UAC prompt every time. Either way asks for administrator rights once.
+        /// </summary>
+        async void SetUpWebcamWithoutPrompts(bool enable)
+        {
+            try
+            {
+                IntPtr owner = BringForwardForPrompt();
+                if (enable)
+                {
+                    string id = settings.WebcamId;
+                    bool? done = await WebcamTasks.InstallAsync(id, owner);
+                    if (done == true)
+                        settings.WebcamTasksId = id;
+                    else if (done == false)
+                        popup.ShowMessage("Couldn't set up the webcam switch", "Windows didn't allow it. Switching will keep asking each time.");
+                }
+                else
+                {
+                    bool? done = await WebcamTasks.RemoveAsync(owner);
+                    if (done == true)
+                        settings.WebcamTasksId = null;
+                    else if (done == false)
+                        popup.ShowMessage("Couldn't remove the webcam switch", "Windows didn't allow it.");
+                }
+                SaveSettings();
+            }
+            catch (Exception ex)
+            {
+                popup.ShowMessage("Couldn't change the webcam switch", ex.Message);
+            }
+        }
+
+        // Windows only shows a UAC prompt up front for the foreground app (otherwise it just flashes
+        // on the taskbar), and the widget never takes focus by itself.
+        IntPtr BringForwardForPrompt()
+        {
+            if (!strip.Visible)
+                return IntPtr.Zero;
+            NativeMethods.SetForegroundWindow(strip.Handle);
+            return strip.Handle;
         }
 
         void SelectWebcam(Webcam webcam)
@@ -395,7 +447,7 @@ namespace AudioFlipper
             {
                 bool? enabled = WebcamDevices.IsEnabled(settings.WebcamId);
                 if (enabled != null)
-                    status = new WebcamStatus(settings.WebcamName ?? "Webcam", enabled.Value, webcamBusy);
+                    status = new WebcamStatus(enabled.Value, webcamBusy);
             }
             strip.SetWebcam(status);
         }
@@ -416,15 +468,15 @@ namespace AudioFlipper
             bool turnOn = !enabled.Value;
             webcamBusy = true;
             RefreshWebcam();
-            // Windows only shows the UAC prompt up front for the foreground app (otherwise it just
-            // flashes on the taskbar), and the widget never takes focus by itself.
-            IntPtr owner = strip.Visible ? strip.Handle : IntPtr.Zero;
-            if (owner != IntPtr.Zero)
-                NativeMethods.SetForegroundWindow(owner);
             WebcamChangeResult result;
             try
             {
-                result = await WebcamDevices.SetEnabledAsync(settings.WebcamId, turnOn, owner);
+                // With "Switch without asking each time" set up for this webcam, start its scheduled
+                // task; otherwise (or if the task has gone missing) ask for administrator rights.
+                WebcamChangeResult? viaTask = settings.WebcamTasksId == settings.WebcamId
+                    ? await WebcamTasks.TrySetEnabledAsync(settings.WebcamId, turnOn)
+                    : null;
+                result = viaTask ?? await WebcamDevices.SetEnabledAsync(settings.WebcamId, turnOn, BringForwardForPrompt());
             }
             catch (Exception)
             {

@@ -20,6 +20,8 @@
   <ItemGroup>
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />
+    <!-- For the late-bound Task Scheduler calls in Webcams/WebcamTasks.cs. -->
+    <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
 
   <ItemGroup>
