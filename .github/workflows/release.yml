@@ -1,0 +1,55 @@
+name: Release
+
+# Publishes a GitHub release with RDPLauncher.exe attached, using
+# .github/release-notes/v<version>.md as the description when it exists.
+# Start it from the Actions tab (Release > Run workflow, enter the version), or push a v<version> tag.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, for example 1.0.0'
+        required: true
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: dotnet build src/RDPLauncher/RDPLauncher.csproj -c Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RDPLauncher
+          path: src/RDPLauncher/bin/Release/net48/RDPLauncher.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: RDPLauncher
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # The release was already made (for example on github.com); just attach the exe.
+            gh release upload "$TAG" RDPLauncher.exe --clobber
+          else
+            notes=".github/release-notes/${TAG}.md"
+            if [ -f "$notes" ]; then notes_args=(--notes-file "$notes"); else notes_args=(--generate-notes); fi
+            gh release create "$TAG" RDPLauncher.exe --target "$GITHUB_SHA" --title "RDPLauncher ${TAG#v}" "${notes_args[@]}"
+          fi
