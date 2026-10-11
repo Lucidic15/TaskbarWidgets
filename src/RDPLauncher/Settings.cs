@@ -16,6 +16,9 @@ namespace RDPLauncher
         // display keys each button uses.
         readonly Dictionary<string, List<List<string>>> displayButtons = new Dictionary<string, List<List<string>>>();
 
+        // Remote Desktop's ID for each display, for each arrangement of outputs (see LocalDisplay.OutputsKey).
+        readonly Dictionary<string, Dictionary<string, int>> displayIds = new Dictionary<string, Dictionary<string, int>>();
+
         /// <summary>The computers to connect to, in the order they were added.</summary>
         public List<Connection> Connections { get; } = new List<Connection>();
 
@@ -61,6 +64,19 @@ namespace RDPLauncher
                 displayButtons[setupKey] = buttons.Select(b => b.ToList()).ToList();
         }
 
+        /// <summary>Remote Desktop's display IDs remembered for an arrangement of outputs, or null.</summary>
+        public Dictionary<string, int> GetDisplayIds(string outputsKey) =>
+            displayIds.TryGetValue(outputsKey, out Dictionary<string, int> ids) ? new Dictionary<string, int>(ids) : null;
+
+        /// <summary>Remembers Remote Desktop's display IDs for an arrangement of outputs; null forgets them.</summary>
+        public void SetDisplayIds(string outputsKey, Dictionary<string, int> ids)
+        {
+            if (ids == null)
+                displayIds.Remove(outputsKey);
+            else
+                displayIds[outputsKey] = new Dictionary<string, int>(ids);
+        }
+
         public static Settings Load()
         {
             var settings = new Settings();
@@ -80,8 +96,15 @@ namespace RDPLauncher
                     switch (key)
                     {
                         case "Connection":
-                            if (Connection.FromKey(value) is Connection connection && settings.Connections.All(c => c.Key != connection.Key))
+                            // Connection=<key>|<name it was given>, or just the key.
+                            int nameBar = value.IndexOf('|');
+                            string connectionKey = nameBar >= 0 ? value.Substring(0, nameBar) : value;
+                            if (Connection.FromKey(connectionKey) is Connection connection && settings.Connections.All(c => c.Key != connection.Key))
+                            {
+                                if (nameBar >= 0 && value.Length > nameBar + 1)
+                                    connection.CustomName = value.Substring(nameBar + 1).Trim();
                                 settings.Connections.Add(connection);
+                            }
                             break;
                         case "CurrentConnection":
                             settings.CurrentConnectionKey = value.Length > 0 ? value : null;
@@ -106,6 +129,21 @@ namespace RDPLauncher
                                 settings.displayButtons[setupKey] = buttons = new List<List<string>>();
                             buttons.Add(displays);
                             break;
+                        case "DisplayIds":
+                            // DisplayIds=<outputs key>|<display key>=<id>;<display key>=<id>…
+                            int idsBar = value.IndexOf('|');
+                            if (idsBar <= 0)
+                                break;
+                            var ids = new Dictionary<string, int>();
+                            foreach (string pair in value.Substring(idsBar + 1).Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                int equals = pair.LastIndexOf('=');
+                                if (equals > 0 && int.TryParse(pair.Substring(equals + 1), out int id))
+                                    ids[pair.Substring(0, equals)] = id;
+                            }
+                            if (ids.Count > 0)
+                                settings.displayIds[value.Substring(0, idsBar)] = ids;
+                            break;
                     }
                 }
             }
@@ -126,12 +164,14 @@ namespace RDPLauncher
                 "CurrentConnection=" + CurrentConnectionKey,
             };
             foreach (Connection connection in Connections)
-                lines.Add("Connection=" + connection.Key);
+                lines.Add("Connection=" + connection.Key + (string.IsNullOrWhiteSpace(connection.CustomName) ? "" : "|" + connection.CustomName.Trim()));
             foreach (KeyValuePair<string, List<List<string>>> setup in displayButtons)
             {
                 foreach (List<string> button in setup.Value)
                     lines.Add("DisplayButton=" + setup.Key + "|" + string.Join(";", button));
             }
+            foreach (KeyValuePair<string, Dictionary<string, int>> outputs in displayIds)
+                lines.Add("DisplayIds=" + outputs.Key + "|" + string.Join(";", outputs.Value.Select(pair => pair.Key + "=" + pair.Value)));
 
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
             File.WriteAllLines(FilePath, lines);

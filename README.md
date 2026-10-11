@@ -6,15 +6,16 @@ looking up the display numbers with `mstsc /l`), click a number.
 
 It adds a widget to the taskbar, in the same style as the Windows weather widget (and as
 [AudioFlipper](https://github.com/Lucidic15/AudioFlipper)): a Remote Desktop icon with the
-computer's name and address, then a row of numbered display buttons.
+computer's address (or the name you gave it, over its address), then a row of numbered display
+buttons.
 
 - **Number buttons**: click **1**, **2** or **3** to connect full screen on that many displays. There's
   one button for each display you have.
 - **Hover a number**: a flyout opens above it with a map of your displays, laid out the way they are
   on your desk. The ones that button uses are highlighted, and the session's main display (where
   the remote taskbar goes) has a bar along its bottom. **Click a display to add it or take it off.**
-- **The computer's name**: click it to pick another computer or add one. Scroll over it to go
-  through your computers.
+- **The computer**: click it (or scroll over it) to go to the next of your computers. With just one,
+  clicking it offers to add another.
 
 Anywhere on the widget, **right-click** for the menu and **drag** left or right to move it along the
 taskbar. It remembers where you put it.
@@ -32,24 +33,22 @@ leftmost chosen display.
 
 ## Computers
 
-Add computers from the **Computers** submenu of the right-click menu (or by clicking the name on
-the widget):
+Add computers from the **Computers** submenu of the right-click menu:
 
 - **Add a computer…**: type its name or address, as you would in Remote Desktop Connection. It
-  connects with the settings Remote Desktop Connection itself uses (its `Default.rdp`), and the
-  user name it remembers for that computer. **Default Remote Desktop settings…** in the menu opens
-  those settings (shared by every computer added by name) to change sound, drives, the clipboard
-  and so on.
+  connects with the settings Remote Desktop Connection itself uses (its `Default.rdp`).
+  **Default Remote Desktop settings…** in the menu opens those settings (shared by every computer
+  added by name) to change sound, drives, the clipboard and so on.
 - **Add a saved .rdp file…**: for a computer with its own settings (a gateway, for example).
   **Edit *name*.rdp…** in the menu opens it in Remote Desktop Connection.
 - **Add a recent computer**: the computers you've connected to with Remote Desktop Connection.
 
-**Connect to *name*** in the menu also has **In a window**, for a session that isn't full screen.
+**Rename *computer*…** in the right-click menu gives the current computer a name, shown on the
+widget above its address. Leave the name empty to show just the address again.
 
 ## How it works
 
-RDPLauncher never changes your .rdp files. When you click a button it writes a copy to
-`%LOCALAPPDATA%\RDPLauncher\Sessions\<name>.rdp`, with the display settings set:
+Remote Desktop's display settings are `use multimon` and `selectedmonitors`:
 
 ```
 screen mode id:i:2
@@ -58,25 +57,37 @@ span monitors:i:0
 selectedmonitors:s:1,0
 ```
 
-and opens that with Remote Desktop Connection (`mstsc.exe`). With all displays chosen it leaves out
-`selectedmonitors`, which means all of them.
+- **Computers added by name** connect with `mstsc /v:<computer>`, like typing the computer into
+  Remote Desktop Connection. Just before, RDPLauncher sets the lines above in the settings Remote
+  Desktop Connection uses for that (`Default.rdp` in Documents, the same settings its **Display**
+  tab changes), leaving the rest as they are. It keeps a copy of your `Default.rdp` from before it
+  first changed it, in `%LOCALAPPDATA%\RDPLauncher\Default.rdp.backup`.
+- **Saved .rdp files** are never changed: RDPLauncher writes a copy with those lines set to
+  `%LOCALAPPDATA%\RDPLauncher\Sessions\<name>.rdp` and opens the copy. If the file is signed (for
+  example by your IT department) and its signature covers the display settings, the copy leaves the
+  signature out, since changing those settings breaks it.
+
+With all displays chosen it leaves out `selectedmonitors`, which means all of them.
 
 The numbers in `selectedmonitors` are Remote Desktop's own display IDs, which aren't the numbers
-Windows Settings shows and can change when displays are plugged in or a dock is swapped. So each
+Windows Settings shows and can change when displays are plugged in or a dock is swapped. The first
 time it connects on some of your displays, RDPLauncher runs `mstsc /l` (which lists them), reads the
 list and closes it straight away; you may see its box flash. It matches the list to your displays by
-their position. If Remote Desktop Connection doesn't list them, RDPLauncher guesses from the order
-Windows lists the displays in, and says so.
+their position and remembers it until your displays change. **Read display numbers again** in the
+right-click menu makes it ask again on the next connection, if a session ever opens on the wrong
+displays.
 
-If an .rdp file is signed (for example by your IT department) and its signature covers the display
-settings, the copy leaves the signature out, since changing those settings breaks it. Remote
-Desktop Connection then asks you to confirm the connection, as for any unsigned file.
+If the list can't be read, RDPLauncher says so once and guesses the IDs from Windows' numbering of
+display outputs (`\\.\DISPLAY1` is 0, and so on), which Remote Desktop's IDs seem to follow. What it
+found is written to `%LOCALAPPDATA%\RDPLauncher\display-numbers.log`.
 
 ## Good to know
 
-- The first time you connect to each computer, Remote Desktop Connection may say it can't identify
-  the publisher (RDPLauncher connects through an .rdp file, which typing the name in doesn't). Tick **Don't ask me again for connections to this computer** and
-  choose **Connect**.
+- Since the April 2026 Windows update, Remote Desktop Connection shows a security warning ("Caution:
+  Unknown remote connection") every time an .rdp file is opened, with no way to turn it off for one
+  computer. It doesn't for computers typed in, which is why computers added by name connect with
+  `mstsc /v`. A computer added from a saved .rdp file still gets the warning each time (unless the
+  file is signed by a publisher your PC trusts), so add computers by name where you can.
 - Pick displays that are next to each other. Remote Desktop can have trouble with a gap between
   the displays it uses.
 - Using more than one display needs the remote computer to support it: Windows Pro, Enterprise or

@@ -13,6 +13,7 @@ namespace RDPLauncher
         public static readonly IntPtr HwndTopmost = new IntPtr(-1);
         public const uint SwpNoSize = 0x1;
         public const uint SwpNoMove = 0x2;
+        public const uint SwpNoZOrder = 0x4;
         public const uint SwpNoActivate = 0x10;
 
         public const uint EventSystemForeground = 0x3;
@@ -28,6 +29,7 @@ namespace RDPLauncher
         public const uint MonitorInfoFPrimary = 0x1;
         public static readonly IntPtr DpiAwarenessContextPerMonitorAwareV2 = new IntPtr(-4);
 
+        public const uint WmClose = 0x0010;
         public const uint WmGetText = 0x000D;
         public const uint WmGetTextLength = 0x000E;
         public const uint SmtoAbortIfHung = 0x2;
@@ -73,6 +75,21 @@ namespace RDPLauncher
             public uint Flags;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
             public string DeviceName;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct DisplayDevice
+        {
+            public int Size;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string DeviceName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            public string DeviceString;
+            public int StateFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            public string DeviceId;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            public string DeviceKey;
         }
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -143,6 +160,11 @@ namespace RDPLauncher
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfoEx info);
 
+        /// <summary>With a null device, lists the display outputs (\\.\DISPLAY1 and so on), including unused ones.</summary>
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool EnumDisplayDevices(string device, uint index, ref DisplayDevice displayDevice, uint flags);
+
         /// <summary>Windows 10 1607 and later; returns the previous context.</summary>
         [DllImport("user32.dll")]
         public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
@@ -157,6 +179,10 @@ namespace RDPLauncher
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);

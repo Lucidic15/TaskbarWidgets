@@ -17,7 +17,7 @@ namespace RDPLauncher
         /// <summary>The connection's name, or what to do when there isn't one yet.</summary>
         public string Title = "";
 
-        /// <summary>The second line under the title.</summary>
+        /// <summary>The second line under the title; empty for just the title.</summary>
         public string Detail = "";
 
         public IReadOnlyList<LocalDisplay> Displays = new LocalDisplay[0];
@@ -47,9 +47,9 @@ namespace RDPLauncher
     /// <summary>
     /// A taskbar button in the style of the Windows weather widget: the connection's name, then a
     /// button for each set of displays ("1", "2", "3"). Click a number to start Remote Desktop on
-    /// that many displays; hover it to see (and change) which ones. Click the name to pick another
-    /// computer, or scroll over it to go through them. Right-click anywhere for the menu, and drag
-    /// to move the widget along the taskbar.
+    /// that many displays; hover it to see (and change) which ones. Click or scroll over the name to
+    /// go through the computers. Right-click anywhere for the menu, and drag to move the widget
+    /// along the taskbar.
     /// </summary>
     /// <remarks>
     /// Windows 11 has no API for adding things to the taskbar, so this is a transparent, always-on-top
@@ -414,7 +414,10 @@ namespace RDPLauncher
             }
         }
 
-        /// <summary>The Remote Desktop icon, then the connection's name over the detail line, like the weather widget's two lines.</summary>
+        /// <summary>
+        /// The Remote Desktop icon, then the connection's name over the detail line, like the weather
+        /// widget's two lines; just the name, centered, without one.
+        /// </summary>
         void DrawConnection(Graphics graphics, Section section, Color foreground, Color secondary)
         {
             int middle = Height / 2;
@@ -427,6 +430,11 @@ namespace RDPLauncher
             using (var foregroundBrush = new SolidBrush(foreground))
             using (var secondaryBrush = new SolidBrush(secondary))
             {
+                if (string.IsNullOrEmpty(content.Detail))
+                {
+                    graphics.DrawString(content.Title, nameFont, foregroundBrush, new RectangleF(textLeft, middle - Px(9), textWidth, Px(18)), format);
+                    return;
+                }
                 graphics.DrawString(content.Title, nameFont, foregroundBrush, new RectangleF(textLeft, middle - Px(18), textWidth, Px(18)), format);
                 graphics.DrawString(content.Detail, detailFont, secondaryBrush, new RectangleF(textLeft, middle + Px(1), textWidth, Px(17)), format);
             }
