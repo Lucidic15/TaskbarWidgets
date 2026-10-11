@@ -496,7 +496,8 @@ namespace RDPLauncher
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-            int section = SectionAt(e.Location);
+            // Pressing a button and sliding off the widget before letting go doesn't click it.
+            int section = ClientRectangle.Contains(e.Location) ? SectionAt(e.Location) : NoSection;
             switch (e.Button)
             {
                 case MouseButtons.Left:

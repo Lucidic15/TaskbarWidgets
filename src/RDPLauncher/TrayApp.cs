@@ -33,6 +33,7 @@ namespace RDPLauncher
 
         List<LocalDisplay> displays = new List<LocalDisplay>();
         string setupKey;
+        string displayDetails; // Also changes when the same arrangement comes back on different connectors.
         List<List<string>> buttons = new List<List<string>>();
         // The last IDs read from "mstsc /l", for when it doesn't answer next time.
         Dictionary<string, int> lastDisplayIds;
@@ -108,12 +109,17 @@ namespace RDPLauncher
             {
                 List<LocalDisplay> current = LocalDisplay.GetAll();
                 string key = LocalDisplay.SetupKey(current);
-                if (key == setupKey)
+                string details = key + "|" + string.Join(";", current.Select(d => d.DeviceName + "#" + d.EnumerationIndex));
+                if (details == displayDetails)
                     return;
                 LocalDisplay.LoadNames(current);
                 displays = current;
-                setupKey = key;
-                buttons = DisplayChoices.ForSetup(displays, settings.GetDisplayButtons(key));
+                displayDetails = details;
+                if (key != setupKey)
+                {
+                    setupKey = key;
+                    buttons = DisplayChoices.ForSetup(displays, settings.GetDisplayButtons(key));
+                }
             }
             catch (Exception)
             {
@@ -147,7 +153,7 @@ namespace RDPLauncher
                 LightTaskbar = lightTaskbar,
             };
 
-            string signature = string.Join("\n", content.Title, content.Detail, setupKey, busyButton, lightTaskbar,
+            string signature = string.Join("\n", content.Title, content.Detail, displayDetails, busyButton, lightTaskbar,
                 string.Join("|", content.Buttons.Select(b => string.Join(";", b))));
             if (signature != lastContentSignature)
             {
@@ -315,7 +321,7 @@ namespace RDPLauncher
             menu.Items.Add(computers);
             if (current != null)
             {
-                string editLabel = current.RdpFile != null ? "Edit " + Path.GetFileName(current.RdpFile) + "…" : "Remote Desktop settings…";
+                string editLabel = current.RdpFile != null ? "Edit " + Path.GetFileName(current.RdpFile) + "…" : "Default Remote Desktop settings…";
                 menu.Items.Add(editLabel, null, (sender, e) => EditConnection(current));
             }
             menu.Items.Add(new ToolStripMenuItem("Reset display buttons", null, (sender, e) => ResetDisplayButtons())
@@ -507,7 +513,9 @@ namespace RDPLauncher
                 FormBorderStyle = FormBorderStyle.None;
                 ShowInTaskbar = false;
                 StartPosition = FormStartPosition.Manual;
-                Location = new Point(-32000, -32000);
+                // In the middle of the screen with the mouse, since the dialog centers itself on its owner.
+                Rectangle workArea = Screen.FromPoint(Cursor.Position).WorkingArea;
+                Location = new Point(workArea.Left + workArea.Width / 2, workArea.Top + workArea.Height / 2);
                 Size = new Size(1, 1);
                 TopMost = true;
                 Opacity = 0;

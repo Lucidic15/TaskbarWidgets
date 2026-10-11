@@ -37,8 +37,9 @@ the widget):
 
 - **Add a computer…**: type its name or address, as you would in Remote Desktop Connection. It
   connects with the settings Remote Desktop Connection itself uses (its `Default.rdp`), and the
-  user name it remembers for that computer. **Remote Desktop settings…** in the menu opens those
-  settings to change sound, drives, the clipboard and so on.
+  user name it remembers for that computer. **Default Remote Desktop settings…** in the menu opens
+  those settings (shared by every computer added by name) to change sound, drives, the clipboard
+  and so on.
 - **Add a saved .rdp file…**: for a computer with its own settings (a gateway, for example).
   **Edit *name*.rdp…** in the menu opens it in Remote Desktop Connection.
 - **Add a recent computer**: the computers you've connected to with Remote Desktop Connection.
@@ -73,8 +74,8 @@ Desktop Connection then asks you to confirm the connection, as for any unsigned 
 
 ## Good to know
 
-- The first time you connect to a computer from an .rdp file, Remote Desktop Connection may say it
-  can't identify the publisher. Tick **Don't ask me again for connections to this computer** and
+- The first time you connect to each computer, Remote Desktop Connection may say it can't identify
+  the publisher (RDPLauncher connects through an .rdp file, which typing the name in doesn't). Tick **Don't ask me again for connections to this computer** and
   choose **Connect**.
 - Pick displays that are next to each other. Remote Desktop can have trouble with a gap between
   the displays it uses.
