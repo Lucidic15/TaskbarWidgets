@@ -65,7 +65,10 @@ namespace RDPLauncher
         const int WsExLayered = 0x80000;
         const int WsExNoActivate = 0x08000000;
         const int MinConnectionLogicalWidth = 120;
-        const int MaxConnectionLogicalWidth = 220;
+        // Wide enough for any computer name or address; only a very long name given with Rename is cut short.
+        const int MaxConnectionLogicalWidth = 400;
+        const int TextLeftLogical = 44; // After the icon.
+        const int TextRightLogical = 10;
         const int ButtonLogicalWidth = 40;
         const int PlacementIntervalMilliseconds = 250;
         const int HoverDelayMilliseconds = 400;
@@ -335,7 +338,10 @@ namespace RDPLauncher
             sections = laidOut.ToArray();
         }
 
-        /// <summary>Fits the connection's name, like the weather widget sizes itself to its text.</summary>
+        /// <summary>
+        /// Fits the connection's name and address in full, like the weather widget sizes itself to its
+        /// text. Measured the same way it's drawn (with the padding DrawString adds), so nothing gets cut short.
+        /// </summary>
         int MeasureConnectionWidth()
         {
             string measureKey = content.Title + "\n" + content.Detail;
@@ -343,18 +349,27 @@ namespace RDPLauncher
             {
                 using (var measuring = new Bitmap(1, 1))
                 using (Graphics graphics = Graphics.FromImage(measuring))
+                using (StringFormat format = TextFormat(trim: false))
                 {
                     graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
                     float textWidth = Math.Max(
-                        graphics.MeasureString(content.Title, nameFont, PointF.Empty, StringFormat.GenericTypographic).Width,
-                        graphics.MeasureString(content.Detail, detailFont, PointF.Empty, StringFormat.GenericTypographic).Width);
+                        graphics.MeasureString(content.Title, nameFont, PointF.Empty, format).Width,
+                        graphics.MeasureString(content.Detail, detailFont, PointF.Empty, format).Width);
                     width = Math.Max(Px(MinConnectionLogicalWidth),
-                        Math.Min(Px(MaxConnectionLogicalWidth), Px(44) + (int)Math.Ceiling(textWidth) + Px(12)));
+                        Math.Min(Px(MaxConnectionLogicalWidth), Px(TextLeftLogical) + (int)Math.Ceiling(textWidth) + Px(4) + Px(TextRightLogical)));
                 }
                 measuredWidths[measureKey] = width;
             }
             return width;
         }
+
+        /// <summary>One line, vertically centered; cut short with "…" only when <paramref name="trim"/>, otherwise never clipped.</summary>
+        static StringFormat TextFormat(bool trim) =>
+            new StringFormat(trim ? StringFormatFlags.NoWrap : StringFormatFlags.NoWrap | StringFormatFlags.NoClip)
+            {
+                Trimming = trim ? StringTrimming.EllipsisCharacter : StringTrimming.None,
+                LineAlignment = StringAlignment.Center,
+            };
 
         int SectionAt(Point clientPoint) => sections.FirstOrDefault(s => clientPoint.X >= s.X && clientPoint.X < s.X + s.Width)?.Id ?? NoSection;
 
@@ -424,9 +439,10 @@ namespace RDPLauncher
             int iconSize = Px(24);
             Icons.DrawRemoteDesktop(graphics, new RectangleF(section.X + Px(10), middle - iconSize / 2f, iconSize, iconSize), foreground);
 
-            float textLeft = section.X + Px(44);
-            float textWidth = section.X + section.Width - textLeft - Px(8);
-            using (var format = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter, LineAlignment = StringAlignment.Center })
+            float textLeft = section.X + Px(TextLeftLogical);
+            float textWidth = section.X + section.Width - textLeft - Px(TextRightLogical);
+            // The section is sized to fit the text, so it's only cut short when it's as wide as it gets.
+            using (StringFormat format = TextFormat(trim: section.Width >= Px(MaxConnectionLogicalWidth)))
             using (var foregroundBrush = new SolidBrush(foreground))
             using (var secondaryBrush = new SolidBrush(secondary))
             {
