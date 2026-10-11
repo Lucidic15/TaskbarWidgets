@@ -75,7 +75,18 @@ namespace RDPLauncher
                 List<List<string>> buttons = DisplayChoices.ForSetup(displays, settings.GetDisplayButtons(LocalDisplay.SetupKey(displays)));
                 List<string> chosen = buttons.FirstOrDefault(b => b.Count == count) ?? DisplayChoices.Defaults(displays)[count - 1];
                 List<LocalDisplay> ordered = DisplayChoices.InSessionOrder(displays, chosen);
-                Dictionary<string, int> ids = MstscDisplayIds.Query(displays);
+                // Remote Desktop's display IDs as the widget remembered them, or else read and remembered.
+                string outputsKey = LocalDisplay.OutputsKey(displays);
+                Dictionary<string, int> ids = settings.GetDisplayIds(outputsKey);
+                if (!MstscDisplayIds.CoversAll(ids, displays))
+                {
+                    ids = MstscDisplayIds.Query(displays);
+                    if (MstscDisplayIds.CoversAll(ids, displays))
+                    {
+                        settings.SetDisplayIds(outputsKey, ids);
+                        TrySave(settings);
+                    }
+                }
                 SessionLauncher.StartFullScreen(connection, MstscDisplayIds.InOrder(ordered, ids, out _));
                 return 0;
             }
@@ -96,6 +107,18 @@ namespace RDPLauncher
             if (computer.EndsWith(".rdp", StringComparison.OrdinalIgnoreCase) && File.Exists(computer))
                 return Connection.ForFile(computer);
             return Connection.ForHost(computer);
+        }
+
+        static void TrySave(Settings settings)
+        {
+            try
+            {
+                settings.Save();
+            }
+            catch (Exception)
+            {
+                // They'll be read again next time.
+            }
         }
 
         static string ValueAfter(string[] args, string option)

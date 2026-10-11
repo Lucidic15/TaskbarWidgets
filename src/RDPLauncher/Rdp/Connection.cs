@@ -27,9 +27,16 @@ namespace RDPLauncher.Rdp
         /// <summary>The path of the saved .rdp file, for connections that have one.</summary>
         public string RdpFile { get; }
 
-        public string Name => RdpFile != null ? Path.GetFileNameWithoutExtension(RdpFile) : Host;
+        /// <summary>The name given to the connection with Rename, or null.</summary>
+        public string CustomName { get; set; }
 
-        /// <summary>How the connection is stored in the settings file.</summary>
+        /// <summary>The name given to it, else the .rdp file's name, else the computer name or address.</summary>
+        public string Name =>
+            !string.IsNullOrWhiteSpace(CustomName) ? CustomName
+            : RdpFile != null ? Path.GetFileNameWithoutExtension(RdpFile)
+            : Host;
+
+        /// <summary>Identifies the connection (whatever it's called) in the settings file.</summary>
         public string Key => RdpFile != null ? FilePrefix + RdpFile : HostPrefix + Host;
 
         public static Connection ForHost(string host) => new Connection(host.Trim(), null);

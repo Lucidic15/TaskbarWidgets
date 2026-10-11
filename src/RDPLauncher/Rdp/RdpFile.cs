@@ -68,11 +68,23 @@ namespace RDPLauncher.Rdp
             }
         }
 
-        /// <summary>Saves the file as UTF-16, like Remote Desktop Connection does.</summary>
+        /// <summary>Saves the file as UTF-16, like Remote Desktop Connection does, keeping its attributes.</summary>
         public void Save(string path)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllLines(path, lines, Encoding.Unicode);
+            // Windows won't overwrite a hidden file (as Default.rdp is) by recreating it, so unhide it meanwhile.
+            FileAttributes? attributes = File.Exists(path) ? File.GetAttributes(path) : (FileAttributes?)null;
+            if (attributes != null && (attributes.Value & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+                File.SetAttributes(path, attributes.Value & ~(FileAttributes.Hidden | FileAttributes.System));
+            try
+            {
+                File.WriteAllLines(path, lines, Encoding.Unicode);
+            }
+            finally
+            {
+                if (attributes != null)
+                    File.SetAttributes(path, attributes.Value);
+            }
         }
 
         int IndexOf(string name)

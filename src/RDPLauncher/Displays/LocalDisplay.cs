@@ -9,12 +9,12 @@ namespace RDPLauncher.Displays
     /// <summary>One of this PC's displays, as Windows arranges them (Settings > System > Display).</summary>
     internal sealed class LocalDisplay
     {
-        public LocalDisplay(Rectangle bounds, bool isPrimary, string deviceName, int enumerationIndex)
+        public LocalDisplay(Rectangle bounds, bool isPrimary, string deviceName, int outputIndex)
         {
             Bounds = bounds;
             IsPrimary = isPrimary;
             DeviceName = deviceName;
-            EnumerationIndex = enumerationIndex;
+            OutputIndex = outputIndex;
             Name = "Display";
         }
 
@@ -26,8 +26,12 @@ namespace RDPLauncher.Displays
         /// <summary>The GDI device name, like \\.\DISPLAY1.</summary>
         public string DeviceName { get; }
 
-        /// <summary>Position in Windows' monitor enumeration; a fallback guess at the mstsc ID.</summary>
-        public int EnumerationIndex { get; }
+        /// <summary>
+        /// Position in Windows' list of display outputs (\\.\DISPLAY1 is 0), counting unused ones.
+        /// Remote Desktop's display IDs seem to follow it (they skip numbers the same way), so it's
+        /// the guess at the ID when "mstsc /l" can't be read.
+        /// </summary>
+        public int OutputIndex { get; }
 
         /// <summary>The monitor's name, like "DELL U2720Q", or "Built-in display".</summary>
         public string Name { get; set; }
@@ -44,6 +48,7 @@ namespace RDPLauncher.Displays
         public static List<LocalDisplay> GetAll()
         {
             var displays = new List<LocalDisplay>();
+            Dictionary<string, int> outputIndexes = OutputIndexes();
             // Windows scales monitor coordinates for apps that aren't per-monitor DPI aware; ask
             // for real pixels just while listing them.
             IntPtr previousContext = IntPtr.Zero;
@@ -63,8 +68,9 @@ namespace RDPLauncher.Displays
                     var info = new NativeMethods.MonitorInfoEx { Size = Marshal.SizeOf(typeof(NativeMethods.MonitorInfoEx)) };
                     if (NativeMethods.GetMonitorInfo(monitor, ref info))
                     {
+                        int outputIndex = info.DeviceName != null && outputIndexes.TryGetValue(info.DeviceName, out int index) ? index : displays.Count;
                         displays.Add(new LocalDisplay(info.Monitor.ToRectangle(), (info.Flags & NativeMethods.MonitorInfoFPrimary) != 0,
-                            info.DeviceName, displays.Count));
+                            info.DeviceName, outputIndex));
                     }
                     return true;
                 }, IntPtr.Zero);
@@ -76,6 +82,19 @@ namespace RDPLauncher.Displays
             }
 
             return displays.OrderBy(d => d.Bounds.X).ThenBy(d => d.Bounds.Y).ToList();
+        }
+
+        static Dictionary<string, int> OutputIndexes()
+        {
+            var indexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var device = new NativeMethods.DisplayDevice { Size = Marshal.SizeOf(typeof(NativeMethods.DisplayDevice)) };
+            for (uint i = 0; i < 64 && NativeMethods.EnumDisplayDevices(null, i, ref device, 0); i++)
+            {
+                if (!string.IsNullOrEmpty(device.DeviceName))
+                    indexes[device.DeviceName] = (int)i;
+                device.Size = Marshal.SizeOf(typeof(NativeMethods.DisplayDevice));
+            }
+            return indexes;
         }
 
         /// <summary>Fills in each display's monitor name.</summary>
@@ -92,5 +111,12 @@ namespace RDPLauncher.Displays
         /// <summary>Identifies an arrangement of displays, so display buttons can be remembered for each one.</summary>
         public static string SetupKey(IEnumerable<LocalDisplay> displays) =>
             string.Join(";", displays.Select(d => (d.IsPrimary ? "*" : "") + d.Key).OrderBy(key => key, StringComparer.Ordinal));
+
+        /// <summary>
+        /// Identifies the arrangement and which outputs the displays are on: Remote Desktop's display
+        /// IDs stay the same while this does, so they're remembered for it.
+        /// </summary>
+        public static string OutputsKey(IEnumerable<LocalDisplay> displays) =>
+            string.Join(";", displays.Select(d => (d.IsPrimary ? "*" : "") + d.Key + "=" + d.DeviceName).OrderBy(key => key, StringComparer.Ordinal));
     }
 }

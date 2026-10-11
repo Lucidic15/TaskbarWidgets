@@ -13,8 +13,8 @@ namespace RDPLauncher
 {
     /// <summary>
     /// Runs the taskbar widget and the notification-area icon. The widget's number buttons start
-    /// Remote Desktop on that many displays; the tray icon and right-click menu have the same
-    /// choices, plus the list of computers and the settings.
+    /// Remote Desktop on that many displays, and clicking the computer's name goes to the next
+    /// computer. The tray icon and right-click menu have the list of computers and the settings.
     /// </summary>
     internal sealed class TrayApp : ApplicationContext
     {
@@ -35,9 +35,9 @@ namespace RDPLauncher
         string setupKey;
         string displayDetails; // Also changes when the same arrangement comes back on different connectors.
         List<List<string>> buttons = new List<List<string>>();
-        // The last IDs read from "mstsc /l", for when it doesn't answer next time.
-        Dictionary<string, int> lastDisplayIds;
-        string lastDisplayIdsSetup;
+        // Arrangements of outputs whose display IDs "mstsc /l" didn't give this time; they're guessed
+        // instead of making every connection wait for it again.
+        readonly HashSet<string> unreadableOutputs = new HashSet<string>();
         string connectionAddress; // The current connection's address, shown under its name.
         bool starting;
         int busyButton = -1;
@@ -75,10 +75,13 @@ namespace RDPLauncher
             strip.ConnectRequested += (sender, button) => ConnectWithButton(button);
             strip.ConnectionClicked += (sender, e) =>
             {
+                // Goes to the next computer; with only one there's nowhere to go, so offer to add another.
                 if (settings.Connections.Count == 0)
                     AddComputer();
-                else
+                else if (settings.Connections.Count == 1)
                     ShowMenuFromStrip(connectionsMenu);
+                else
+                    StepConnection(1);
             };
             strip.ConnectionStepRequested += (sender, notches) => StepConnection(-notches);
             strip.DisplayToggleRequested += (sender, e) => ToggleDisplay(e.Button, e.DisplayKey);
@@ -109,7 +112,7 @@ namespace RDPLauncher
             {
                 List<LocalDisplay> current = LocalDisplay.GetAll();
                 string key = LocalDisplay.SetupKey(current);
-                string details = key + "|" + string.Join(";", current.Select(d => d.DeviceName + "#" + d.EnumerationIndex));
+                string details = key + "|" + string.Join(";", current.Select(d => d.DeviceName + "#" + d.OutputIndex));
                 if (details == displayDetails)
                     return;
                 LocalDisplay.LoadNames(current);
@@ -142,10 +145,11 @@ namespace RDPLauncher
             Connection connection = settings.CurrentConnection;
             var content = new WidgetContent
             {
+                // The connection's name over its address, or just the address when it has no other name.
                 Title = connection?.Name ?? "Remote Desktop",
                 Detail = connection == null ? "Click to add a computer"
                     : connectionAddress != null && !string.Equals(connectionAddress, connection.Name, StringComparison.OrdinalIgnoreCase) ? connectionAddress
-                    : "Remote Desktop",
+                    : "",
                 Displays = displays,
                 Buttons = connection == null ? new List<IReadOnlyCollection<string>>()
                     : buttons.Select(b => (IReadOnlyCollection<string>)b.ToList()).ToList(),
@@ -187,10 +191,7 @@ namespace RDPLauncher
                 StartSession(connection, buttons[button].ToList(), button);
         }
 
-        /// <summary>
-        /// Starts Remote Desktop full screen on the chosen displays, or in a window when
-        /// <paramref name="chosenKeys"/> is null.
-        /// </summary>
+        /// <summary>Starts Remote Desktop full screen on the chosen displays.</summary>
         async void StartSession(Connection connection, List<string> chosenKeys, int button)
         {
             if (starting)
@@ -200,37 +201,17 @@ namespace RDPLauncher
             RefreshWidget();
             try
             {
-                if (chosenKeys == null)
+                List<LocalDisplay> all = displays;
+                List<LocalDisplay> ordered = DisplayChoices.InSessionOrder(all, chosenKeys);
+                if (ordered.Count >= all.Count)
                 {
-                    SessionLauncher.StartWindowed(connection);
+                    // All of them, which needs no IDs.
+                    SessionLauncher.StartFullScreen(connection, null);
                 }
                 else
                 {
-                    List<LocalDisplay> all = displays;
-                    List<LocalDisplay> ordered = DisplayChoices.InSessionOrder(all, chosenKeys);
-                    if (ordered.Count >= all.Count)
-                    {
-                        // All of them, which needs no IDs.
-                        SessionLauncher.StartFullScreen(connection, null);
-                    }
-                    else
-                    {
-                        string setup = setupKey;
-                        Dictionary<string, int> ids = await Task.Run(() => MstscDisplayIds.Query(all));
-                        if (ids != null && ids.Count == all.Count)
-                        {
-                            lastDisplayIds = ids;
-                            lastDisplayIdsSetup = setup;
-                        }
-                        else if (lastDisplayIdsSetup == setup)
-                        {
-                            ids = lastDisplayIds;
-                        }
-
-                        SessionLauncher.StartFullScreen(connection, MstscDisplayIds.InOrder(ordered, ids, out bool guessed));
-                        if (guessed)
-                            popup.ShowMessage("Display numbers guessed", "Remote Desktop didn't list its display numbers, so it may use different displays.");
-                    }
+                    Dictionary<string, int> ids = await DisplayIds(all);
+                    SessionLauncher.StartFullScreen(connection, MstscDisplayIds.InOrder(ordered, ids, out _));
                 }
                 await Task.Delay(StartCooldownMilliseconds);
             }
@@ -244,6 +225,41 @@ namespace RDPLauncher
                 busyButton = -1;
                 RefreshWidget();
             }
+        }
+
+        /// <summary>
+        /// Remote Desktop's display IDs: the remembered ones, or else read from "mstsc /l" and
+        /// remembered. When they can't be read, says so once and leaves them to be guessed.
+        /// </summary>
+        async Task<Dictionary<string, int>> DisplayIds(List<LocalDisplay> all)
+        {
+            string outputsKey = LocalDisplay.OutputsKey(all);
+            Dictionary<string, int> ids = settings.GetDisplayIds(outputsKey);
+            if (MstscDisplayIds.CoversAll(ids, all) || unreadableOutputs.Contains(outputsKey))
+                return ids;
+
+            ids = await Task.Run(() => MstscDisplayIds.Query(all));
+            if (MstscDisplayIds.CoversAll(ids, all))
+            {
+                settings.SetDisplayIds(outputsKey, ids);
+                SaveSettings();
+            }
+            else
+            {
+                unreadableOutputs.Add(outputsKey);
+                popup.ShowMessage("Couldn't read Remote Desktop's display numbers",
+                    @"Guessed them. Details: %LOCALAPPDATA%\RDPLauncher\display-numbers.log");
+            }
+            return ids;
+        }
+
+        /// <summary>Forgets the display IDs for these displays, so they're read again on the next connection.</summary>
+        void ReadDisplayIdsAgain()
+        {
+            string outputsKey = LocalDisplay.OutputsKey(displays);
+            settings.SetDisplayIds(outputsKey, null);
+            unreadableOutputs.Remove(outputsKey);
+            SaveSettings();
         }
 
         /// <summary>Adds the display to the button's displays, or takes it off (but never the last one).</summary>
@@ -304,29 +320,23 @@ namespace RDPLauncher
         {
             DisposeMenuItems(menu.Items);
             Connection current = settings.CurrentConnection;
-            if (current != null)
-            {
-                menu.Items.Add(new ToolStripMenuItem("Connect to " + current.Name) { Enabled = false });
-                for (int i = 0; i < buttons.Count; i++)
-                {
-                    int button = i;
-                    menu.Items.Add(new ToolStripMenuItem(ButtonLabel(button), null, (sender, e) => ConnectWithButton(button)) { Enabled = !starting });
-                }
-                menu.Items.Add(new ToolStripMenuItem("In a window", null, (sender, e) => StartSession(current, null, -1)) { Enabled = !starting });
-                menu.Items.Add(new ToolStripSeparator());
-            }
-
             var computers = new ToolStripMenuItem("Computers");
             AddConnectionItems(computers.DropDownItems);
             menu.Items.Add(computers);
             if (current != null)
             {
+                menu.Items.Add("Rename " + current.Name + "…", null, (sender, e) => RenameConnection(current));
                 string editLabel = current.RdpFile != null ? "Edit " + Path.GetFileName(current.RdpFile) + "…" : "Default Remote Desktop settings…";
                 menu.Items.Add(editLabel, null, (sender, e) => EditConnection(current));
             }
             menu.Items.Add(new ToolStripMenuItem("Reset display buttons", null, (sender, e) => ResetDisplayButtons())
             {
                 Enabled = setupKey != null && settings.GetDisplayButtons(setupKey) != null,
+            });
+            menu.Items.Add(new ToolStripMenuItem("Read display numbers again", null, (sender, e) => ReadDisplayIdsAgain())
+            {
+                ToolTipText = "If Remote Desktop opens on the wrong displays, the next connection asks it for its display numbers again.",
+                Enabled = displays.Count > 1,
             });
 
             menu.Items.Add(new ToolStripSeparator());
@@ -340,16 +350,6 @@ namespace RDPLauncher
             menu.Items.Add("Exit", null, (sender, e) => ExitThread());
         }
 
-        /// <summary>"On 2 displays", naming the displays when two buttons have the same number.</summary>
-        string ButtonLabel(int button)
-        {
-            List<string> choice = buttons[button];
-            string label = "On " + DisplayChoices.Describe(choice.Count);
-            if (buttons.Count(b => b.Count == choice.Count) > 1)
-                label += " (" + string.Join(", ", DisplayChoices.InSessionOrder(displays, choice).Select(d => d.Name)) + ")";
-            return label;
-        }
-
         /// <summary>The computers to pick from, and adding and removing them.</summary>
         void AddConnectionItems(ToolStripItemCollection items)
         {
@@ -357,7 +357,8 @@ namespace RDPLauncher
             foreach (Connection connection in settings.Connections)
             {
                 Connection choice = connection;
-                var item = new ToolStripMenuItem(connection.Name) { Checked = current != null && connection.Key == current.Key };
+                string label = connection.Host != null && connection.Name != connection.Host ? connection.Name + "  (" + connection.Host + ")" : connection.Name;
+                var item = new ToolStripMenuItem(label) { Checked = current != null && connection.Key == current.Key };
                 if (connection.RdpFile != null)
                     item.ToolTipText = connection.RdpFile;
                 item.Click += (sender, e) => SelectConnection(choice);
@@ -397,10 +398,28 @@ namespace RDPLauncher
 
         void AddComputer()
         {
-            using (var dialog = new AddComputerDialog(Connection.RecentComputers()))
+            using (var dialog = new InputDialog("Add a computer",
+                "Computer name or IP address, as you'd type it in Remote Desktop Connection\n(for example workpc, workpc.contoso.com or 192.168.1.20:3390):",
+                "Add", "", Connection.RecentComputers(), allowSpaces: false, allowEmpty: false))
             {
-                if (dialog.ShowDialog() == DialogResult.OK && dialog.Computer.Length > 0)
-                    AddConnection(Connection.ForHost(dialog.Computer));
+                if (dialog.ShowDialog() == DialogResult.OK && dialog.Value.Length > 0)
+                    AddConnection(Connection.ForHost(dialog.Value));
+            }
+        }
+
+        /// <summary>Names the connection on the widget; an empty name goes back to showing its address.</summary>
+        void RenameConnection(Connection connection)
+        {
+            string address = connection.ReadAddress() ?? connection.Name;
+            using (var dialog = new InputDialog("Rename " + connection.Name,
+                "Name to show for " + address + " (leave it empty to show just the address):",
+                "Rename", connection.CustomName ?? "", null, allowSpaces: true, allowEmpty: true))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+                connection.CustomName = dialog.Value.Length > 0 ? dialog.Value : null;
+                SaveSettings();
+                ConnectionChanged();
             }
         }
 
