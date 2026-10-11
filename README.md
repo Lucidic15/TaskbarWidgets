@@ -14,8 +14,8 @@ buttons.
 - **Hover a number**: a flyout opens above it with a map of your displays, laid out the way they are
   on your desk. The ones that button uses are highlighted, and the session's main display (where
   the remote taskbar goes) has a bar along its bottom. **Click a display to add it or take it off.**
-- **The computer**: click it (or scroll over it) to go to the next of your computers. With just one,
-  clicking it offers to add another.
+- **The computer**: click it (or scroll over it) to go to the next of your computers. Add and
+  manage computers from the right-click menu.
 
 Anywhere on the widget, **right-click** for the menu and **drag** left or right to move it along the
 taskbar. It remembers where you put it.

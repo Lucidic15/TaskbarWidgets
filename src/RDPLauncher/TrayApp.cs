@@ -26,7 +26,6 @@ namespace RDPLauncher
         readonly Settings settings = Settings.Load();
         readonly NotifyIcon trayIcon = new NotifyIcon();
         readonly ContextMenuStrip menu = new ContextMenuStrip();
-        readonly ContextMenuStrip connectionsMenu = new ContextMenuStrip();
         readonly Timer refreshTimer = new Timer { Interval = RefreshIntervalMilliseconds };
         readonly OsdForm popup = new OsdForm();
         readonly TaskbarStrip strip;
@@ -54,14 +53,6 @@ namespace RDPLauncher
                 RebuildMenu();
                 e.Cancel = false;
             };
-            connectionsMenu.Items.Add("Loading…");
-            connectionsMenu.Opening += (sender, e) =>
-            {
-                ConnectionChanged();
-                DisposeMenuItems(connectionsMenu.Items);
-                AddConnectionItems(connectionsMenu.Items);
-                e.Cancel = false;
-            };
 
             trayIcon.ContextMenuStrip = menu;
             trayIcon.MouseClick += (sender, e) =>
@@ -75,11 +66,10 @@ namespace RDPLauncher
             strip.ConnectRequested += (sender, button) => ConnectWithButton(button);
             strip.ConnectionClicked += (sender, e) =>
             {
-                // Goes to the next computer; with only one there's nowhere to go, so offer to add another.
+                // Goes to the next computer (the menu is on right-click); before there are any, it's
+                // the widget's "Click to add a computer".
                 if (settings.Connections.Count == 0)
                     AddComputer();
-                else if (settings.Connections.Count == 1)
-                    ShowMenuFromStrip(connectionsMenu);
                 else
                     StepConnection(1);
             };
@@ -514,7 +504,6 @@ namespace RDPLauncher
                 trayIcon.Icon?.Dispose();
                 trayIcon.Dispose();
                 menu.Dispose();
-                connectionsMenu.Dispose();
                 popup.Dispose();
                 strip.Dispose();
             }
