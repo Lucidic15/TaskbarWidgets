@@ -113,6 +113,10 @@ namespace AudioFlipper
         [DllImport("user32.dll")]
         public static extern IntPtr GetWindow(IntPtr window, uint relationship);
 
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
         /// <summary>Extracts an icon at a specific size; negative indexes are resource IDs.</summary>
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         public static extern int SHDefExtractIcon(string iconFile, int index, uint flags, out IntPtr largeIcon, IntPtr smallIcon, uint iconSize);

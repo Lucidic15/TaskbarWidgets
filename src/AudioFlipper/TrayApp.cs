@@ -299,9 +299,44 @@ namespace AudioFlipper
             menu.Items.Add(BuildAudioMenu(EDataFlow.Capture));
             menu.Items.Add(BuildWebcamMenu());
             menu.Items.Add(new ToolStripSeparator());
+            if (BuildLinkMenu() is ToolStripMenuItem linkMenu)
+                menu.Items.Add(linkMenu);
             menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, (sender, e) => ExitThread());
+        }
+
+        /// <summary>
+        /// Linking the widget with RDPLauncher's into one, on either side; shown while RDPLauncher is
+        /// running (or they're linked).
+        /// </summary>
+        ToolStripMenuItem BuildLinkMenu()
+        {
+            WidgetLink.State link = WidgetLink.Read();
+            if (!link.Linked && !WidgetLink.PartnerRunning())
+                return null;
+
+            var linkMenu = new ToolStripMenuItem("Link with " + WidgetLink.Partner);
+            void AddChoice(string text, bool isChecked, bool linked, bool selfOnLeft)
+            {
+                var item = new ToolStripMenuItem(text) { Checked = isChecked };
+                item.Click += (sender, e) =>
+                {
+                    try
+                    {
+                        strip.SetLink(linked, selfOnLeft);
+                    }
+                    catch (Exception ex)
+                    {
+                        popup.ShowMessage("Couldn't change the link", ex.Message);
+                    }
+                };
+                linkMenu.DropDownItems.Add(item);
+            }
+            AddChoice("Not linked", !link.Linked, false, link.SelfOnLeft);
+            AddChoice(WidgetLink.Partner + " on the left", link.Linked && !link.SelfOnLeft, true, false);
+            AddChoice(WidgetLink.Partner + " on the right", link.Linked && link.SelfOnLeft, true, true);
+            return linkMenu;
         }
 
         // Disposes the previous menu, including the copies of device icons the items show.
