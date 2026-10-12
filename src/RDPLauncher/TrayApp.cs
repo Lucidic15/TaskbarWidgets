@@ -330,6 +330,8 @@ namespace RDPLauncher
             });
 
             menu.Items.Add(new ToolStripSeparator());
+            if (BuildLinkMenu() is ToolStripMenuItem linkMenu)
+                menu.Items.Add(linkMenu);
             menu.Items.Add(Toggle("Show on taskbar", settings.ShowOnTaskbar, value =>
             {
                 settings.ShowOnTaskbar = value;
@@ -338,6 +340,39 @@ namespace RDPLauncher
             menu.Items.Add(Toggle("Start with Windows", StartupRegistration.IsEnabled(), StartupRegistration.SetEnabled));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, (sender, e) => ExitThread());
+        }
+
+        /// <summary>
+        /// Linking the widget with AudioFlipper's into one, on either side; shown while AudioFlipper
+        /// is running (or they're linked).
+        /// </summary>
+        ToolStripMenuItem BuildLinkMenu()
+        {
+            WidgetLink.State link = WidgetLink.Read();
+            if (!link.Linked && !WidgetLink.PartnerRunning())
+                return null;
+
+            var linkMenu = new ToolStripMenuItem("Link with " + WidgetLink.Partner);
+            void AddChoice(string text, bool isChecked, bool linked, bool selfOnLeft)
+            {
+                var item = new ToolStripMenuItem(text) { Checked = isChecked };
+                item.Click += (sender, e) =>
+                {
+                    try
+                    {
+                        strip.SetLink(linked, selfOnLeft);
+                    }
+                    catch (Exception ex)
+                    {
+                        popup.ShowMessage("Couldn't change the link", ex.Message);
+                    }
+                };
+                linkMenu.DropDownItems.Add(item);
+            }
+            AddChoice("Not linked", !link.Linked, false, link.SelfOnLeft);
+            AddChoice(WidgetLink.Partner + " on the left", link.Linked && !link.SelfOnLeft, true, false);
+            AddChoice(WidgetLink.Partner + " on the right", link.Linked && link.SelfOnLeft, true, true);
+            return linkMenu;
         }
 
         /// <summary>The computers to pick from, and adding and removing them.</summary>

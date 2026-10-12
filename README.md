@@ -93,6 +93,16 @@ found is written to `%LOCALAPPDATA%\RDPLauncher\display-numbers.log`.
 - Using more than one display needs the remote computer to support it: Windows Pro, Enterprise or
   Server do, Windows Home can't be connected to at all.
 
+## Linking with AudioFlipper
+
+If you also run [AudioFlipper](https://github.com/Lucidic15/AudioFlipper) (1.3 or later), the two
+widgets can be joined into one: right-click either and choose **Link with AudioFlipper** (or **Link
+with RDPLauncher**) and which side it goes on. Linked, they sit side by side with a divider between
+them, dragging either moves both, and if one hides (or isn't running) the other takes its place.
+Choose **Not linked** to separate them again; each stays where it is.
+
+The link is shared by the two apps, in `HKCU\Software\TaskbarWidgetLink`.
+
 ## How the taskbar widget works
 
 Windows 11 has no supported way for apps to add their own widgets to the taskbar: the old taskbar
