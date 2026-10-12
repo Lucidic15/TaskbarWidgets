@@ -64,6 +64,16 @@ removes them (and asks once more). Picking a different webcam sets them up for t
 
 Webcams that are unplugged don't show on the widget.
 
+## Linking with RDPLauncher
+
+If you also run [RDPLauncher](https://github.com/Lucidic15/RDPLauncher) (1.1 or later), the two
+widgets can be joined into one: right-click either and choose **Link with RDPLauncher** (or **Link
+with AudioFlipper**) and which side it goes on. Linked, they sit side by side with a divider between
+them, dragging either moves both, and if one hides (or isn't running) the other takes its place.
+Choose **Not linked** to separate them again; each stays where it is.
+
+The link is shared by the two apps, in `HKCU\Software\TaskbarWidgetLink`.
+
 ## How the taskbar widget works
 
 Windows 11 has no supported way for apps to add their own widgets to the taskbar: the old taskbar

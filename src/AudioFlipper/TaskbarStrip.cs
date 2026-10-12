@@ -119,6 +119,9 @@ namespace AudioFlipper
         bool dragging;
         int dragStartCursorX;
         int dragStartOffset;
+        int groupLeft; // Left edge of the linked pair on screen (or of this widget alone).
+        bool wasLinked;
+        bool dividerAtLeft; // Linked, with the other app's widget on the left.
         int wheelRemainder;
 
         public TaskbarStrip(int offset)
@@ -135,6 +138,7 @@ namespace AudioFlipper
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
+            Text = WidgetLink.WindowTitle(WidgetLink.Self); // How the other app finds this widget.
 
             placementTimer.Tick += (sender, e) => UpdatePlacement();
             onForegroundChanged = (hook, eventType, window, objectId, childId, threadId, time) => UpdatePlacement();
@@ -281,25 +285,58 @@ namespace AudioFlipper
                 || Taskbar.IsFullScreenAppActive(monitor, Handle, shellReportsFullScreen))
             {
                 if (Visible)
+                {
                     Hide();
+                    if (WidgetLink.Read().Linked)
+                        WidgetLink.NotifyPartner(); // So it takes the pair's place.
+                }
                 flyout.Hide();
                 return;
             }
 
             LayOutSections();
             int width = Math.Min(sections.Sum(s => s.Width), bar.Width);
-            int preferredOffset = offset >= 0 ? offset : DefaultOffset(bar.Width, width);
-            int x = bar.Left + Math.Max(0, Math.Min(preferredOffset, bar.Width - width));
-            var bounds = new Rectangle(x, bar.Top, width, bar.Height);
             taskbar = bar;
 
-            if (contentChanged || bounds != Bounds || !Visible)
+            WidgetLink.State link = WidgetLink.Read();
+            if (wasLinked && !link.Linked && Visible)
             {
+                // Just unlinked: stay where the pair left this widget.
+                offset = Math.Max(0, Left - bar.Left);
+                OffsetChanged?.Invoke(this, EventArgs.Empty);
+            }
+            wasLinked = link.Linked;
+
+            int x;
+            int partnerWidth = 0;
+            if (link.Linked)
+            {
+                // Side by side with the other app's widget, wherever the pair was put.
+                if (WidgetLink.TryGetPartnerBounds(out Rectangle partner))
+                    partnerWidth = partner.Width;
+                int groupOffset = link.Offset >= 0 ? link.Offset : DefaultOffset(bar.Width, width + partnerWidth);
+                x = WidgetLink.PlaceInGroup(bar.Left, bar.Width, width, partnerWidth, link.SelfOnLeft, groupOffset, out groupLeft);
+            }
+            else
+            {
+                int preferredOffset = offset >= 0 ? offset : DefaultOffset(bar.Width, width);
+                x = bar.Left + Math.Max(0, Math.Min(preferredOffset, bar.Width - width));
+                groupLeft = x;
+            }
+            bool divider = partnerWidth > 0 && !link.SelfOnLeft;
+            var bounds = new Rectangle(x, bar.Top, width, bar.Height);
+
+            bool moved = bounds != Bounds || !Visible;
+            if (contentChanged || moved || divider != dividerAtLeft)
+            {
+                dividerAtLeft = divider;
                 Bounds = bounds;
                 Render();
             }
             if (!Visible)
                 Show();
+            if (moved && link.Linked)
+                WidgetLink.NotifyPartner(); // So it moves up against this widget.
             if (flyout.Visible)
                 flyout.SetAnchor(SectionScreenBounds(flyoutPart));
 
@@ -352,8 +389,32 @@ namespace AudioFlipper
             CallbackMessage = appBarMessage,
         };
 
+        /// <summary>Links this widget with the other app's, with this one on the given side, or unlinks them.</summary>
+        public void SetLink(bool linked, bool selfOnLeft)
+        {
+            WidgetLink.State current = WidgetLink.Read();
+            int groupOffset = current.Offset;
+            if (linked && !current.Linked)
+            {
+                // Start the pair where the leftmost of the two widgets is now.
+                int left = Visible ? Left : taskbar.Left + Math.Max(0, offset);
+                if (WidgetLink.TryGetPartnerBounds(out Rectangle partner))
+                    left = Visible ? Math.Min(left, partner.Left) : partner.Left;
+                groupOffset = Math.Max(0, left - taskbar.Left);
+            }
+            WidgetLink.Write(linked, selfOnLeft ? WidgetLink.Self : WidgetLink.Partner, groupOffset);
+            UpdatePlacement(true);
+            WidgetLink.NotifyPartner();
+        }
+
         protected override void WndProc(ref Message m)
         {
+            // The other app's widget moved, changed size, or changed the link.
+            if (m.Msg == WidgetLink.ChangedMessage)
+            {
+                UpdatePlacement();
+                return;
+            }
             // Windows says a full-screen app opened or closed (lParam is true while one is open).
             if (appBarMessage != 0 && m.Msg == appBarMessage && m.WParam.ToInt64() == NativeMethods.AbnFullScreenApp)
             {
@@ -444,6 +505,13 @@ namespace AudioFlipper
 
                     if (dragging)
                         Shapes.FillRoundedRectangle(graphics, highlight, new RectangleF(Px(2), Px(4), Width - Px(4), Height - Px(8)), Px(4));
+
+                    // Linked with the other app's widget on the left: the divider between the two.
+                    if (dividerAtLeft)
+                    {
+                        using (var linkDivider = new Pen(Color.FromArgb(lightTaskbar ? 50 : 60, foreground), 1f))
+                            graphics.DrawLine(linkDivider, 1, Px(14), 1, Height - Px(14));
+                    }
 
                     for (int i = 0; i < sections.Length; i++)
                     {
@@ -576,7 +644,7 @@ namespace AudioFlipper
             pressed = true;
             dragging = false;
             dragStartCursorX = Cursor.Position.X;
-            dragStartOffset = Left - taskbar.Left;
+            dragStartOffset = groupLeft - taskbar.Left;
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -597,7 +665,11 @@ namespace AudioFlipper
                 flyout.Hide();
             }
             dragging = true;
-            offset = Math.Max(0, dragStartOffset + distance);
+            int dragged = Math.Max(0, dragStartOffset + distance);
+            if (wasLinked)
+                WidgetLink.WriteOffset(dragged); // Moves the pair; the other widget follows when told.
+            else
+                offset = dragged;
             UpdatePlacement();
         }
 
@@ -611,7 +683,12 @@ namespace AudioFlipper
                     bool wasDragging = dragging;
                     pressed = false;
                     dragging = false;
-                    if (wasDragging)
+                    if (wasDragging && wasLinked)
+                    {
+                        WidgetLink.WriteOffset(groupLeft - taskbar.Left); // Where the pair actually ended up after clamping.
+                        Render();
+                    }
+                    else if (wasDragging)
                     {
                         offset = Left - taskbar.Left; // Store where it actually ended up after clamping.
                         Render();
