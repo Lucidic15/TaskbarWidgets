@@ -7,7 +7,8 @@ each show or hide:
 - **Output**: the active output device's icon, name and volume. Click it to switch to the next
   output you have enabled (speakers → headset → monitor → …).
 - **Input**: the same for your microphone.
-- **Webcam**: a camera icon that turns a chosen webcam on and off (see below).
+- **Webcam**: the chosen webcam's name and whether it's on, with a camera icon that turns it on and
+  off (see below).
 
 **On the Output and Input sections:**
 
@@ -49,8 +50,13 @@ AudioFlipper can also turn a webcam on and off from the taskbar widget. Turn it 
 **Webcam → Show on taskbar** in the right-click menu, and pick the webcam to control from the
 list in the same menu.
 
-The widget then gets a camera icon on its right, with a slash through it while the webcam is off.
-Click it to switch. **Webcam → Camera settings…** opens the camera page in Windows Settings.
+The widget then gets a webcam section on its right: a camera icon (with a slash through it while
+the webcam is off) and the webcam's name over **On** or **Off**. Click it to switch.
+**Webcam → Camera settings…** opens the camera page in Windows Settings.
+
+Windows has no way to rename a webcam, but **Webcam → Rename…** gives it a name in AudioFlipper,
+shown on the widget and in the menu. Leave the name empty to go back to the webcam's own name. Each
+webcam keeps the name you give it.
 
 Turning the webcam off works like **Disable device** in Device Manager: no app can use it until it's
 turned back on. Windows only lets administrators do that, so by default each switch shows a Windows

@@ -31,11 +31,15 @@ namespace AudioFlipper.Webcams
     /// <summary>What the taskbar widget shows for the webcam being controlled.</summary>
     internal sealed class WebcamStatus
     {
-        public WebcamStatus(bool enabled, bool busy)
+        public WebcamStatus(string name, bool enabled, bool busy)
         {
+            Name = name;
             Enabled = enabled;
             Busy = busy;
         }
+
+        /// <summary>The webcam's name, or the name it was given in AudioFlipper.</summary>
+        public string Name { get; }
 
         public bool Enabled { get; }
 
@@ -46,7 +50,7 @@ namespace AudioFlipper.Webcams
         {
             if (a == null || b == null)
                 return a == b;
-            return a.Enabled == b.Enabled && a.Busy == b.Busy;
+            return a.Name == b.Name && a.Enabled == b.Enabled && a.Busy == b.Busy;
         }
     }
 

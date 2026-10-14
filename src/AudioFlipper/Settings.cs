@@ -12,6 +12,7 @@ namespace AudioFlipper
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AudioFlipper", "settings.txt");
 
         readonly HashSet<string> excludedDeviceIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        readonly Dictionary<string, string> webcamNicknames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Also make the new output the default communications device (used by Teams, Discord, etc.).</summary>
         public bool SwitchCommunications { get; set; } = true;
@@ -50,6 +51,21 @@ namespace AudioFlipper
         public string WebcamTasksId { get; set; }
 
         public bool SwitchesCommunications(EDataFlow flow) => flow == EDataFlow.Capture ? SwitchInputCommunications : SwitchCommunications;
+
+        /// <summary>The name given to a webcam in AudioFlipper, or null to use the device's own name.</summary>
+        public string GetWebcamNickname(string instanceId) =>
+            instanceId != null && webcamNicknames.TryGetValue(instanceId, out string nickname) ? nickname : null;
+
+        /// <summary>Names a webcam in AudioFlipper; an empty name goes back to the device's own name.</summary>
+        public void SetWebcamNickname(string instanceId, string nickname)
+        {
+            // Settings are stored one per line, so keep names to a single line.
+            nickname = (nickname ?? "").Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ').Trim();
+            if (nickname.Length == 0)
+                webcamNicknames.Remove(instanceId);
+            else
+                webcamNicknames[instanceId] = nickname;
+        }
 
         public bool IsExcluded(string deviceId) => excludedDeviceIds.Contains(deviceId);
 
@@ -107,6 +123,12 @@ namespace AudioFlipper
                         case "WebcamName":
                             settings.WebcamName = value;
                             break;
+                        case "WebcamNickname":
+                            // "<instance ID><tab><name>"; device instance IDs never contain tabs.
+                            int tab = value.IndexOf('\t');
+                            if (tab > 0 && tab < value.Length - 1)
+                                settings.webcamNicknames[value.Substring(0, tab)] = value.Substring(tab + 1);
+                            break;
                         case "WebcamTasksId":
                             settings.WebcamTasksId = value.Length > 0 ? value : null;
                             break;
@@ -146,6 +168,8 @@ namespace AudioFlipper
             };
             foreach (string id in excludedDeviceIds)
                 lines.Add("Exclude=" + id);
+            foreach (KeyValuePair<string, string> nickname in webcamNicknames)
+                lines.Add("WebcamNickname=" + nickname.Key + "\t" + nickname.Value);
 
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
             File.WriteAllLines(FilePath, lines);

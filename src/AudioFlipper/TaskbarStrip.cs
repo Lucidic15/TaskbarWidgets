@@ -53,7 +53,8 @@ namespace AudioFlipper
     /// - Output: the active output's icon, name and volume. Click to switch output, scroll to change
     ///   volume, middle-click to mute, hover for a volume slider.
     /// - Input: the same for the active microphone.
-    /// - Webcam: a camera icon, struck through while the chosen webcam is off; click to switch it.
+    /// - Webcam: a camera icon (struck through while off) with the chosen webcam's name over "On" or
+    ///   "Off"; click to switch it.
     /// Right-click anywhere for the menu, and drag to move the widget along the taskbar.
     /// </summary>
     /// <remarks>
@@ -71,7 +72,8 @@ namespace AudioFlipper
         const int WsExNoActivate = 0x08000000;
         const int MinAudioLogicalWidth = 140;
         const int MaxAudioLogicalWidth = 260;
-        const int WebcamLogicalWidth = 44;
+        const int MinWebcamLogicalWidth = 100;
+        const int MaxWebcamNameLogicalWidth = 160;
         const int PlacementIntervalMilliseconds = 250;
         const int HoverDelayMilliseconds = 400;
         const int WheelNotch = 120;
@@ -444,7 +446,7 @@ namespace AudioFlipper
             if (showInput)
                 Add(Part.Input, MeasureAudioWidth(NameOf(Part.Input)));
             if (webcam != null)
-                Add(Part.Webcam, Px(WebcamLogicalWidth));
+                Add(Part.Webcam, MeasureWebcamWidth(webcam.Name));
             sections = laidOut.ToArray();
         }
 
@@ -466,16 +468,32 @@ namespace AudioFlipper
         {
             if (!measuredWidths.TryGetValue(name, out int width))
             {
-                using (var measuring = new Bitmap(1, 1))
-                using (Graphics graphics = Graphics.FromImage(measuring))
-                {
-                    graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
-                    int textWidth = (int)Math.Ceiling(graphics.MeasureString(name, nameFont, PointF.Empty, StringFormat.GenericTypographic).Width);
-                    width = Math.Max(Px(MinAudioLogicalWidth), Math.Min(Px(MaxAudioLogicalWidth), Px(44) + textWidth + Px(20)));
-                }
+                width = Math.Max(Px(MinAudioLogicalWidth), Math.Min(Px(MaxAudioLogicalWidth), Px(44) + MeasureText(name) + Px(20)));
                 measuredWidths[name] = width;
             }
             return width;
+        }
+
+        /// <summary>Fits the webcam's name, up to a limit (longer names are cut short with "…").</summary>
+        int MeasureWebcamWidth(string name)
+        {
+            string key = "webcam|" + name;
+            if (!measuredWidths.TryGetValue(key, out int width))
+            {
+                width = Math.Max(Px(MinWebcamLogicalWidth), Px(40) + Math.Min(Px(MaxWebcamNameLogicalWidth), MeasureText(name)) + Px(20));
+                measuredWidths[key] = width;
+            }
+            return width;
+        }
+
+        int MeasureText(string text)
+        {
+            using (var measuring = new Bitmap(1, 1))
+            using (Graphics graphics = Graphics.FromImage(measuring))
+            {
+                graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+                return (int)Math.Ceiling(graphics.MeasureString(text, nameFont, PointF.Empty, StringFormat.GenericTypographic).Width);
+            }
         }
 
         Part PartAt(Point clientPoint) => sections.FirstOrDefault(s => clientPoint.X >= s.X && clientPoint.X < s.X + s.Width)?.Part ?? Part.None;
@@ -530,11 +548,8 @@ namespace AudioFlipper
 
                         if (section.Part == Part.Webcam)
                         {
-                            Color iconColor = webcam.Busy ? Color.FromArgb(110, foreground) : foreground;
                             Color behindIcon = isHovered ? highlight : Color.FromArgb(1, 0, 0, 0);
-                            int camera = Px(20);
-                            DrawWebcamIcon(graphics, new RectangleF(section.X + Px(12), Height / 2 - camera / 2f, camera, camera),
-                                iconColor, !webcam.Enabled, behindIcon);
+                            DrawWebcamSection(graphics, section, foreground, behindIcon);
                         }
                         else
                         {
@@ -575,6 +590,30 @@ namespace AudioFlipper
                 Shapes.FillPill(graphics, track, bar);
                 if (!status.Muted)
                     Shapes.FillPill(graphics, accent, new RectangleF(bar.X, bar.Y, bar.Width * Math.Min(100, status.VolumePercent) / 100f, bar.Height));
+            }
+        }
+
+        /// <summary>Camera icon, then the webcam's name over "On" or "Off", like the audio sections' two lines.</summary>
+        void DrawWebcamSection(Graphics graphics, Section section, Color foreground, Color behindIcon)
+        {
+            Color secondary = lightTaskbar ? Color.FromArgb(90, 90, 90) : Color.FromArgb(205, 205, 205);
+            Color iconColor = webcam.Busy ? Color.FromArgb(110, foreground) : foreground;
+            int middle = Height / 2;
+            int camera = Px(20);
+            DrawWebcamIcon(graphics, new RectangleF(section.X + Px(12), middle - camera / 2f, camera, camera),
+                iconColor, !webcam.Enabled, behindIcon);
+
+            float textLeft = section.X + Px(40);
+            float textWidth = section.X + section.Width - textLeft - Px(10);
+            string state = webcam.Busy
+                ? (webcam.Enabled ? "Turning off…" : "Turning on…")
+                : (webcam.Enabled ? "On" : "Off");
+            using (var format = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter, LineAlignment = StringAlignment.Center })
+            using (var foregroundBrush = new SolidBrush(foreground))
+            using (var secondaryBrush = new SolidBrush(secondary))
+            {
+                graphics.DrawString(webcam.Name, nameFont, foregroundBrush, new RectangleF(textLeft, middle - Px(18), textWidth, Px(18)), format);
+                graphics.DrawString(state, volumeFont, secondaryBrush, new RectangleF(textLeft, middle + Px(1), textWidth, Px(17)), format);
             }
         }
 
