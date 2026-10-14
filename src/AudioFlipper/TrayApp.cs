@@ -457,7 +457,9 @@ namespace AudioFlipper
             foreach (Webcam webcam in webcams)
             {
                 Webcam choice = webcam;
-                var item = new ToolStripMenuItem(webcam.Enabled ? webcam.Name : webcam.Name + "  (off)")
+                string nickname = settings.GetWebcamNickname(webcam.InstanceId);
+                string label = nickname != null ? nickname + " (" + webcam.Name + ")" : webcam.Name;
+                var item = new ToolStripMenuItem(webcam.Enabled ? label : label + "  (off)")
                 {
                     Checked = webcam.InstanceId == settings.WebcamId,
                 };
@@ -478,7 +480,7 @@ namespace AudioFlipper
             Webcam selected = webcams.FirstOrDefault(w => w.InstanceId == settings.WebcamId);
             if (selected != null)
             {
-                string action = (selected.Enabled ? "Turn off " : "Turn on ") + selected.Name;
+                string action = (selected.Enabled ? "Turn off " : "Turn on ") + WebcamDisplayName();
                 webcamMenu.DropDownItems.Add(new ToolStripMenuItem(action, null, (sender, e) => ToggleWebcam()) { Enabled = !webcamBusy });
 
                 bool noPrompt = settings.WebcamTasksId != null && settings.WebcamTasksId == settings.WebcamId;
@@ -486,6 +488,8 @@ namespace AudioFlipper
                 noPromptItem.Click += (sender, e) => SetUpWebcamWithoutPrompts(!noPrompt);
                 webcamMenu.DropDownItems.Add(noPromptItem);
             }
+            if (selected != null)
+                webcamMenu.DropDownItems.Add("Rename…", null, (sender, e) => RenameWebcam(selected));
             webcamMenu.DropDownItems.Add("Camera settings…", null, (sender, e) => Launch("ms-settings:camera", null, "Couldn't open Camera settings"));
             return webcamMenu;
         }
@@ -534,6 +538,29 @@ namespace AudioFlipper
             return strip.Handle;
         }
 
+        /// <summary>
+        /// Names the webcam in AudioFlipper. Windows has no way to rename a webcam, so this is
+        /// AudioFlipper's own name for it, shown on the widget and in the menu.
+        /// </summary>
+        void RenameWebcam(Webcam webcam)
+        {
+            using (var dialog = new RenameDialog(
+                "Rename webcam",
+                "Name to show for this webcam in AudioFlipper. Leave it empty to use its own name, \"" + webcam.Name + "\".",
+                settings.GetWebcamNickname(webcam.InstanceId) ?? webcam.Name))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+                string name = dialog.EnteredName;
+                settings.SetWebcamNickname(webcam.InstanceId, name == webcam.Name ? null : name);
+            }
+            SaveSettings();
+            RefreshWebcam();
+        }
+
+        /// <summary>The chosen webcam's name: the one given in AudioFlipper, or its own.</summary>
+        string WebcamDisplayName() => settings.GetWebcamNickname(settings.WebcamId) ?? settings.WebcamName ?? "Webcam";
+
         void SelectWebcam(Webcam webcam)
         {
             settings.WebcamId = webcam.InstanceId;
@@ -548,7 +575,7 @@ namespace AudioFlipper
             {
                 bool? enabled = WebcamDevices.IsEnabled(settings.WebcamId);
                 if (enabled != null)
-                    status = new WebcamStatus(enabled.Value, webcamBusy);
+                    status = new WebcamStatus(WebcamDisplayName(), enabled.Value, webcamBusy);
             }
             strip.SetWebcam(status);
         }
@@ -558,7 +585,7 @@ namespace AudioFlipper
             if (webcamBusy || string.IsNullOrEmpty(settings.WebcamId))
                 return;
 
-            string name = settings.WebcamName ?? "the webcam";
+            string name = WebcamDisplayName();
             bool? enabled = WebcamDevices.IsEnabled(settings.WebcamId);
             if (enabled == null)
             {
