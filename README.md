@@ -78,7 +78,8 @@ with AudioFlipper**) and which side it goes on. Linked, they sit side by side wi
 them, dragging either moves both, and if one hides (or isn't running) the other takes its place.
 Choose **Not linked** to separate them again; each stays where it is.
 
-The link is shared by the two apps, in `HKCU\Software\TaskbarWidgetLink`.
+The link is shared by the two apps, in `HKCU\Software\TaskbarWidgetLink`. Their Windhawk mods
+(below) link the same way, with each other or with the apps.
 
 ## How the taskbar widget works
 
@@ -117,6 +118,8 @@ else to install.
   ```
 
   The exe is written to `src/AudioFlipper/bin/Release/net48/AudioFlipper.exe`.
+- **As a Windhawk mod:** if you use [Windhawk](https://windhawk.net), the widget also comes as a
+  mod that Windhawk runs, with no exe. See [windhawk/](windhawk/README.md).
 
 Use **Start with Windows** in the right-click menu to launch it at sign-in, and **Exit** to close it.
 
