@@ -1,11 +1,11 @@
-# RDP Launcher as a Windhawk mod
+# Taskbar RDP Launcher, the Windhawk mod
 
-[`rdp-launcher.wh.cpp`](rdp-launcher.wh.cpp) is RDPLauncher as a [Windhawk](https://windhawk.net)
-mod: the same taskbar widget, with its display buttons, display picker, computers and menu, run by
+[`taskbar-rdp-launcher.wh.cpp`](taskbar-rdp-launcher.wh.cpp) is RDPLauncher as a
+[Windhawk](https://windhawk.net) mod: the same taskbar widget, with its display buttons, display picker, computers and menu, run by
 Windhawk instead of by RDPLauncher.exe. There's nothing else to download or keep running, and
 Windhawk starts it with Windows.
 
-It pairs with the [AudioFlipper mod](https://github.com/Lucidic15/AudioFlipper/tree/main/windhawk):
+It pairs with the [Taskbar Audio Flipper mod](https://github.com/Lucidic15/AudioFlipper/tree/main/windhawk):
 the two widgets can be linked into one, on either side, as the apps can. A mod also links with the
 other app.
 
@@ -33,7 +33,8 @@ Until the mod is in Windhawk's catalog, install it from this file:
    it needs to compile mods, and restarts when they're installed; then click **Create a new mod**
    again.
 3. The editor opens with an example mod. Replace all of it with the contents of
-   [`rdp-launcher.wh.cpp`](rdp-launcher.wh.cpp) (on GitHub, open the file and use **Copy raw file**).
+   [`taskbar-rdp-launcher.wh.cpp`](taskbar-rdp-launcher.wh.cpp) (on GitHub, open the file and use
+   **Copy raw file**).
 4. Click **Compile mod**. Once it's compiled, the widget appears on the taskbar.
 5. Click **Exit editing mode**. The mod stays installed and starts with Windows like any other.
 
@@ -45,12 +46,13 @@ the published one.
 
 Windhawk's catalog is the [windhawk-mods](https://github.com/ramensoftware/windhawk-mods)
 repository. To publish the mod, or later an update with a higher `@version`, open a pull request
-there that adds or changes just `mods/rdp-launcher.wh.cpp`, a copy of this file. It has to come from
-the GitHub account in the mod's `@github` line (Lucidic15). Windhawk's maintainers review each
+there that adds or changes just `mods/taskbar-rdp-launcher.wh.cpp`, a copy of this file. It has to
+come from the GitHub account in the mod's `@github` line (Lucidic15), and its description has to keep
+the pull request template's **Mod authorship** section, filled in. Windhawk's maintainers review each
 submission before it appears in the catalog.
 
 ## The code
 
 The mod is one C++ file, compiled by Windhawk with Clang in C++23 mode. Its widget code (the taskbar
 window, popups, menus, text prompt and the link between the widgets) is the same as in the
-AudioFlipper mod, so a change there belongs in both.
+Taskbar Audio Flipper mod, so a change there belongs in both.

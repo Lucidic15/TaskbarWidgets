@@ -1,6 +1,6 @@
 // ==WindhawkMod==
-// @id              rdp-launcher
-// @name            RDP Launcher
+// @id              taskbar-rdp-launcher
+// @name            Taskbar RDP Launcher
 // @description     A taskbar widget that starts Remote Desktop full screen on the number of displays you pick
 // @version         1.0.0
 // @author          Lucidic15
@@ -13,7 +13,7 @@
 
 // ==WindhawkModReadme==
 /*
-# RDP Launcher
+# Taskbar RDP Launcher
 
 A taskbar widget, in the style of the Windows weather widget, that starts Remote Desktop
 full screen on as many of your displays as you want. Instead of editing `use multimon` and
@@ -49,12 +49,13 @@ sometimes docked keeps separate buttons for the desk and for the road.
   flash) and remembers it until your displays change. **Read display numbers again** in the menu
   asks again.
 
-## Linking with AudioFlipper
+## Linking with Taskbar Audio Flipper
 
-With the [AudioFlipper](https://github.com/Lucidic15/AudioFlipper) mod (or app) running too, the two
-widgets can be joined into one: right-click either, choose **Link with AudioFlipper** and which side
-it goes on. Linked, they sit side by side with a divider between them, and dragging either moves
-both.
+With the Taskbar Audio Flipper mod (or the [AudioFlipper](https://github.com/Lucidic15/AudioFlipper)
+app) running too, the two widgets can be joined into one: right-click either, choose **Link with
+AudioFlipper** (or **Link with RDPLauncher**) and which side it goes on. Linked, they sit side by
+side with a divider between them, dragging either moves both, and if one hides the other takes its
+place.
 
 ## The RDPLauncher app
 

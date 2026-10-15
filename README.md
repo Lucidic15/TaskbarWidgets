@@ -143,8 +143,8 @@ to install.
   ```
 
   The exe is written to `src/RDPLauncher/bin/Release/net48/RDPLauncher.exe`.
-- **As a Windhawk mod:** if you use [Windhawk](https://windhawk.net), the widget also comes as a
-  mod that Windhawk runs, with no exe. See [windhawk/](windhawk/README.md).
+- **As a Windhawk mod:** if you use [Windhawk](https://windhawk.net), the widget also comes as the
+  Taskbar RDP Launcher mod, which Windhawk runs with no exe. See [windhawk/](windhawk/README.md).
 
 Use **Start with Windows** in the right-click menu to launch it at sign-in, and **Exit** to close it.
 
