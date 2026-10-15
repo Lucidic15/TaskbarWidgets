@@ -6,8 +6,8 @@ Windhawk instead of by RDPLauncher.exe. There's nothing else to download or keep
 Windhawk starts it with Windows.
 
 It pairs with the [Taskbar Audio Flipper mod](https://github.com/Lucidic15/AudioFlipper/tree/main/windhawk):
-the two widgets can be linked into one, on either side, as the apps can. A mod also links with the
-other app.
+the two widgets can be linked into one, on either side, as the apps can. The mods link with each
+other only, not with the apps.
 
 ## Differences from the app
 
@@ -16,13 +16,16 @@ other app.
   mod off closes it.
 - **No command line**: shortcuts to `RDPLauncher.exe --connect … --displays …` keep working
   alongside the mod.
+- **Default.rdp is put back**: the app leaves its display options in `Default.rdp`, while the mod
+  puts back what they were when each session ends.
+- **Its own settings**: the mod keeps its settings in Windhawk's storage for it, which Windhawk
+  removes with the mod. The first time it runs, it imports the app's settings file
+  (`%APPDATA%\RDPLauncher\settings.txt`, which it only reads), so computers, names and display
+  buttons carry over from the app to the mod, once.
 
-Everything else works the same, and the mod uses the app's settings file
-(`%APPDATA%\RDPLauncher\settings.txt`), so computers, names and display buttons carry over both ways.
-
-Use the app or the mod, not both. While RDPLauncher.exe is running, the mod waits and takes over when
-the app exits; while the mod is running, the app closes as soon as it starts. When switching to the
-mod, turn off the app's **Start with Windows** and choose **Exit**.
+Everything else works the same. Use the app or the mod, not both: they no longer know about each
+other, so with both running there are two widgets. When switching to the mod, turn off the app's
+**Start with Windows** and choose **Exit**.
 
 ## Trying it
 
@@ -53,6 +56,7 @@ submission before it appears in the catalog.
 
 ## The code
 
-The mod is one C++ file, compiled by Windhawk with Clang in C++23 mode. Its widget code (the taskbar
-window, popups, menus, text prompt and the link between the widgets) is the same as in the
-Taskbar Audio Flipper mod, so a change there belongs in both.
+The mod is one C++ file, compiled by Windhawk with Clang in C++23 mode, 32-bit for Windhawk 1.7
+(which runs tool mods in its 32-bit `windhawk.exe`) and 64-bit for Windhawk 2.0. Its widget code (the
+taskbar window, popups, menus, text prompt, storage and the link between the widgets) is the same as
+in the Taskbar Audio Flipper mod, each keeping the parts it uses, so a change there belongs in both.
