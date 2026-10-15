@@ -1,6 +1,6 @@
 // ==WindhawkMod==
-// @id              audioflipper
-// @name            AudioFlipper
+// @id              taskbar-audio-flipper
+// @name            Taskbar Audio Flipper
 // @description     A taskbar widget that switches between your speakers, headsets and microphones with a click, and turns a webcam on and off
 // @version         1.0.0
 // @author          Lucidic15
@@ -13,7 +13,7 @@
 
 // ==WindhawkModReadme==
 /*
-# AudioFlipper
+# Taskbar Audio Flipper
 
 A taskbar widget, in the style of the Windows weather widget, for switching audio devices. It has
 up to three sections, which you can each show or hide:
@@ -56,10 +56,10 @@ asking to allow "PnP Utility" (Microsoft's `pnputil.exe`), unless Windhawk itsel
 administrator. If the AudioFlipper app's **Switch without asking each time** has set up its
 scheduled tasks for the same webcam, the mod uses them, with no prompt.
 
-## Linking with RDP Launcher
+## Linking with Taskbar RDP Launcher
 
-With the [RDP Launcher](https://github.com/Lucidic15/RDPLauncher) mod (or the RDPLauncher app)
-running too, the two widgets can be joined into one: right-click either, choose **Link with
+With the Taskbar RDP Launcher mod (or the [RDPLauncher](https://github.com/Lucidic15/RDPLauncher)
+app) running too, the two widgets can be joined into one: right-click either, choose **Link with
 RDPLauncher** (or **Link with AudioFlipper**) and which side it goes on. Linked, they sit side by
 side with a divider between them, dragging either moves both, and if one hides the other takes its
 place.
