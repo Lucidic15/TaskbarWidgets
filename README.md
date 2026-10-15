@@ -10,6 +10,8 @@ each show or hide:
 - **Webcam**: the chosen webcam's name and whether it's on, with a camera icon that turns it on and
   off (see below).
 
+![The widget on the taskbar, with its Output, Input and Webcam sections](docs/screenshot.png)
+
 **On the Output and Input sections:**
 
 - **Hover**: a flyout opens above it with the device's name, a volume slider, and the device icon
