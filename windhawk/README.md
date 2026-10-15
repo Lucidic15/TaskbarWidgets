@@ -6,8 +6,8 @@ by Windhawk instead of by AudioFlipper.exe. There's nothing else to download or 
 Windhawk starts it with Windows.
 
 It pairs with the [Taskbar RDP Launcher mod](https://github.com/Lucidic15/RDPLauncher/tree/main/windhawk):
-the two widgets can be linked into one, on either side, as the apps can. A mod also links with the
-other app.
+the two widgets can be linked into one, on either side, as the apps can. The mods link with each
+other only, not with the apps.
 
 ## Differences from the app
 
@@ -16,17 +16,17 @@ other app.
 - **No Start with Windows or Exit** in the menu: Windhawk starts the mod at sign-in, and turning the
   mod off closes it.
 - **No command line**: shortcuts to `AudioFlipper.exe --next` keep working alongside the mod.
-- **Webcam switching**: the app's **Switch without asking each time** isn't in the mod, but the mod
-  uses the scheduled tasks it sets up, for the same webcam, without a prompt. Otherwise each switch
-  asks for permission, unless Windhawk itself runs as administrator.
+- **Webcam switching**: the app's **Switch without asking each time** isn't in the mod, and the mod
+  doesn't use the scheduled tasks the app sets up for it. Each switch runs `pnputil.exe` as
+  administrator, which may ask for permission, depending on User Account Control's settings.
+- **Its own settings**: the mod keeps its settings in Windhawk's storage for it, which Windhawk
+  removes with the mod. The first time it runs, it imports the app's settings file
+  (`%APPDATA%\AudioFlipper\settings.txt`, which it only reads), so the sections, rotation, webcam
+  and its name carry over from the app to the mod, once.
 
-Everything else works the same, and the mod uses the app's settings file
-(`%APPDATA%\AudioFlipper\settings.txt`), so the sections, rotation, webcam and its name carry over
-both ways.
-
-Use the app or the mod, not both. While AudioFlipper.exe is running, the mod waits and takes over when
-the app exits; while the mod is running, the app closes as soon as it starts. When switching to the
-mod, turn off the app's **Start with Windows** and choose **Exit**.
+Everything else works the same. Use the app or the mod, not both: they no longer know about each
+other, so with both running there are two widgets. When switching to the mod, turn off the app's
+**Start with Windows** and choose **Exit**.
 
 ## Trying it
 
@@ -57,6 +57,7 @@ submission before it appears in the catalog.
 
 ## The code
 
-The mod is one C++ file, compiled by Windhawk with Clang in C++23 mode. Its widget code (the taskbar
-window, popups, menus, text prompt and the link between the widgets) is the same as in the Taskbar
-RDP Launcher mod, so a change there belongs in both.
+The mod is one C++ file, compiled by Windhawk with Clang in C++23 mode, 32-bit for Windhawk 1.7
+(which runs tool mods in its 32-bit `windhawk.exe`) and 64-bit for Windhawk 2.0. Its widget code (the
+taskbar window, popups, menus, text prompt, storage and the link between the widgets) is the same as
+in the Taskbar RDP Launcher mod, each keeping the parts it uses, so a change there belongs in both.
