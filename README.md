@@ -9,6 +9,8 @@ It adds a widget to the taskbar, in the same style as the Windows weather widget
 computer's address (or the name you gave it, over its address), then a row of numbered display
 buttons.
 
+![The widget on the taskbar, with a computer and buttons for 1, 2 and 3 displays](docs/screenshot.png)
+
 - **Number buttons**: click **1**, **2** or **3** to connect full screen on that many displays. There's
   one button for each display you have.
 - **Hover a number**: a flyout opens above it with a map of your displays, laid out the way they are
