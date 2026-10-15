@@ -5,7 +5,6 @@
 // @version         1.0.0
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
-// @homepage        https://github.com/Lucidic15/AudioFlipper
 // @include         windhawk.exe
 // @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -loleaut32 -luuid -lsetupapi -lcfgmgr32
 // @license         MIT
@@ -53,24 +52,19 @@ rename a webcam, but **Webcam → Rename…** gives it a name to show on the wid
 Turning the webcam off works like **Disable device** in Device Manager: no app can use it until it's
 turned back on. Windows only lets administrators do that, so each switch shows a Windows prompt
 asking to allow "PnP Utility" (Microsoft's `pnputil.exe`), unless Windhawk itself runs as
-administrator. If the AudioFlipper app's **Switch without asking each time** has set up its
-scheduled tasks for the same webcam, the mod uses them, with no prompt.
+administrator.
 
 ## Linking with Taskbar RDP Launcher
 
-With the Taskbar RDP Launcher mod (or the [RDPLauncher](https://github.com/Lucidic15/RDPLauncher)
-app) running too, the two widgets can be joined into one: right-click either, choose **Link with
-RDPLauncher** (or **Link with AudioFlipper**) and which side it goes on. Linked, they sit side by
-side with a divider between them, dragging either moves both, and if one hides the other takes its
-place.
+With the Taskbar RDP Launcher mod running too, the two widgets can be joined into one: right-click
+either, choose **Link with RDPLauncher** (or **Link with AudioFlipper**) and which side it goes on.
+Linked, they sit side by side with a divider between them, dragging either moves both, and if one
+hides the other takes its place.
 
-## The AudioFlipper app
+## Settings
 
-This mod is the Windhawk version of [AudioFlipper](https://github.com/Lucidic15/AudioFlipper), without
-its tray icon, and shares its settings (`%APPDATA%\AudioFlipper\settings.txt`). Use one or the other:
-while AudioFlipper.exe is running, the mod waits and shows its widget once the app exits, and while
-the mod is running, the app closes as soon as it starts. If you switch to the mod, turn off the app's
-**Start with Windows**.
+The sections, the click rotation and the webcam settings are kept in
+`%APPDATA%\AudioFlipper\settings.txt`.
 */
 // ==/WindhawkModReadme==
 
