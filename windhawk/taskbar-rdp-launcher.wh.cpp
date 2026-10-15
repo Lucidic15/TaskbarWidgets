@@ -5,7 +5,6 @@
 // @version         1.0.0
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
-// @homepage        https://github.com/Lucidic15/RDPLauncher
 // @include         windhawk.exe
 // @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -loleaut32 -luuid -lcomdlg32
 // @license         MIT
@@ -51,19 +50,14 @@ sometimes docked keeps separate buttons for the desk and for the road.
 
 ## Linking with Taskbar Audio Flipper
 
-With the Taskbar Audio Flipper mod (or the [AudioFlipper](https://github.com/Lucidic15/AudioFlipper)
-app) running too, the two widgets can be joined into one: right-click either, choose **Link with
-AudioFlipper** (or **Link with RDPLauncher**) and which side it goes on. Linked, they sit side by
-side with a divider between them, dragging either moves both, and if one hides the other takes its
-place.
+With the Taskbar Audio Flipper mod running too, the two widgets can be joined into one: right-click
+either, choose **Link with AudioFlipper** (or **Link with RDPLauncher**) and which side it goes on.
+Linked, they sit side by side with a divider between them, dragging either moves both, and if one
+hides the other takes its place.
 
-## The RDPLauncher app
+## Settings
 
-This mod is the Windhawk version of [RDPLauncher](https://github.com/Lucidic15/RDPLauncher), without
-its tray icon, and shares its settings (`%APPDATA%\RDPLauncher\settings.txt`), so computers, names
-and display buttons carry over. Use one or the other: while RDPLauncher.exe is running, the mod waits
-and shows its widget once the app exits, and while the mod is running, the app closes as soon as it
-starts. If you switch to the mod, turn off the app's **Start with Windows**.
+The computers, their names and the display buttons are kept in `%APPDATA%\RDPLauncher\settings.txt`.
 */
 // ==/WindhawkModReadme==
 
