@@ -14,7 +14,8 @@ running it without Windhawk.
 
 Linked, they sit side by side as one: right-click any of them, open **Link widgets**, and choose
 **Link with** another. Dragging any of them moves them all, and a widget that hides leaves no gap.
-Linking works between the mods and the apps alike.
+Linking works between the mods and the apps alike, with each one up to date: a widget on an older
+version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the others.
 
 ## Taskbar Audio Flipper
 
