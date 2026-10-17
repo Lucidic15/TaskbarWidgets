@@ -6,9 +6,11 @@ running it without Windhawk.
 
 | Widget | What it does | App |
 | --- | --- | --- |
-| **Taskbar Audio Flipper** | Switches between your speakers, headsets and microphones with a click, and turns a webcam on and off | `AudioFlipper.exe` |
-| **Taskbar RDP Launcher** | Starts Remote Desktop full screen on the number of displays you pick | `RDPLauncher.exe` |
-| **Taskbar Snipper** | Print Screen selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save | `TaskbarSnipper.exe` |
+| [**Taskbar Audio Flipper**](https://windhawk.net/mods/taskbar-audio-flipper) | Switches between your speakers, headsets and microphones with a click, and turns a webcam on and off | `AudioFlipper.exe` |
+| [**Taskbar RDP Launcher**](https://windhawk.net/mods/taskbar-rdp-launcher) | Starts Remote Desktop full screen on the number of displays you pick | `RDPLauncher.exe` |
+| [**Taskbar Snipper**](https://windhawk.net/mods/taskbar-snipper) | Print Screen selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save | `TaskbarSnipper.exe` |
+
+![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher linked on the taskbar](docs/widgets.png)
 
 Linked, they sit side by side as one: right-click any of them, open **Link widgets**, and choose
 **Link with** another. Dragging any of them moves them all, and a widget that hides leaves no gap.
@@ -35,6 +37,8 @@ Linking works between the mods and the apps alike.
   a saved .rdp file, or from Remote Desktop Connection's recent list, in the right-click menu.
 
 ## Taskbar Snipper
+
+![The screenshot and record buttons on the taskbar](docs/taskbar-snipper.png)
 
 - **Print Screen**, or the screenshot button, freezes the screen to select an area or a window. A
   toolbox above it draws with a pencil, lines, arrows, boxes and text in any color and thickness;

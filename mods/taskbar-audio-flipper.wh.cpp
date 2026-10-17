@@ -65,8 +65,14 @@ your User Account Control settings.
 
 ## Linking with the other widgets
 
-With the Taskbar RDP Launcher or Taskbar Snipper mod running too, their widgets can be joined with this one
-into one: right-click any of them, open **Link widgets**, and choose **Link with** the other. Linked,
+![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher linked on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-widgets/linked.png)
+
+From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
+[Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and
+[Taskbar RDP Launcher](https://windhawk.net/mods/taskbar-rdp-launcher).
+
+With the Taskbar RDP Launcher or Taskbar Snipper mod running too, their widgets can be joined with
+this one into one: right-click any of them, open **Link widgets**, and choose **Link with** the other. Linked,
 they sit side by side with a divider between them, and dragging any of them moves them all; **Move
 this widget left** and **right** change their order. A widget that hides leaves no gap.
 
