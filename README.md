@@ -26,7 +26,7 @@ version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the o
   own.
 - **Webcam** shows the chosen webcam and whether it's on. Click its camera to turn it on or off.
 - **Right-click** for each section's settings: which devices take turns, a device to pick directly,
-  icon style, and the links to Windows' settings.
+  and the links to Windows' settings.
 
 ## Taskbar RDP Launcher
 
