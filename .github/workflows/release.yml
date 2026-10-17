@@ -29,4 +29,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = @(Get-ChildItem build/*.exe) + @(Get-ChildItem mods/*.wh.cpp) | ForEach-Object { $_.FullName }
-          gh release create "${{ github.ref_name }}" @files --title "Taskbar Widgets ${{ github.ref_name }}" --generate-notes
+          # Notes from .github/release-notes/<tag>.md when there are some, else from the commits.
+          $notes = ".github/release-notes/${{ github.ref_name }}.md"
+          if (Test-Path $notes) {
+            gh release create "${{ github.ref_name }}" @files --title "Taskbar Widgets ${{ github.ref_name }}" --notes-file $notes
+          } else {
+            gh release create "${{ github.ref_name }}" @files --title "Taskbar Widgets ${{ github.ref_name }}" --generate-notes
+          }
