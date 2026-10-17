@@ -110,7 +110,11 @@ unlinked.
 - While a program running as administrator is in front, Windows doesn't let the mod see Print
   Screen or Win+Shift+R, so Windows handles them as usual.
 - The tool, color and thickness you used last are remembered.
-- A recording closed without copying or saving it is deleted; the window asks first.
+- A recording closed without copying or saving it is deleted; the window asks first. If the mod
+  turns off while recording, or with a recording still open, the recording is kept in the
+  recordings folder.
+- Recordings being made and trimmed, and the files put on the clipboard by Copy, are kept in the
+  mod's storage (in a folder only you can open), and go with the mod.
 - Windhawk 1.x runs mods in a 32-bit process, short on memory for video: there, an area bigger
   than 2560 × 1440 is recorded scaled down to that many pixels. Windhawk 2.0 records up to 4K.
 */
@@ -160,7 +164,6 @@ unlinked.
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
-#include <mferror.h>
 #include <gdiplus.h>
 
 #include <algorithm>
@@ -223,9 +226,17 @@ std::wstring KnownFolder(REFKNOWNFOLDERID folder) {
     return result;
 }
 
-bool FileExists(const std::wstring& path) {
-    DWORD attributes = GetFileAttributesW(path.c_str());
-    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+// A new file name in the folder, "<prefix> <date> <time>.<extension>", numbered if it's taken.
+std::wstring NewFileName(const std::wstring& folder, const wchar_t* prefix, const wchar_t* extension) {
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    WCHAR name[96];
+    swprintf_s(name, L"%s %04d-%02d-%02d %02d%02d%02d", prefix, now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    std::wstring path = folder + L"\\" + name + extension;
+    for (int copy = 2; GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES && copy < 1000; copy++) {
+        path = folder + L"\\" + name + L" (" + std::to_wstring(copy) + L")" + extension;
+    }
+    return path;
 }
 
 // Menu text: "&" would underline the next letter.
@@ -294,6 +305,32 @@ void SetString(const wchar_t* name, const std::wstring& value) {
 
 void Delete(const wchar_t* name) {
     Wh_DeleteValue(ValueName(name).c_str());
+}
+
+// The user's own folder in the mod's storage (which goes with the mod), for recordings. Windhawk's
+// storage is shared by everyone on the PC, and recordings show what was on the screen, so only this
+// user (and the system) can open it.
+std::wstring Folder() {
+    WCHAR storage[MAX_PATH];
+    size_t length = Wh_GetModStoragePath(storage, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return {};
+    }
+    std::wstring root(storage, length);
+    std::wstring folder = root + L"\\" + UserSid();
+    if (GetFileAttributesW(folder.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        SHCreateDirectoryExW(nullptr, root.c_str(), nullptr);  // Fails harmlessly when it's there already.
+        SECURITY_ATTRIBUTES attributes{sizeof(attributes), nullptr, FALSE};
+        PSECURITY_DESCRIPTOR descriptor = nullptr;
+        std::wstring access = L"D:P(A;OICI;FA;;;" + UserSid() + L")(A;OICI;FA;;;SY)";
+        if (UserSid() != L"User" &&
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(access.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) {
+            attributes.lpSecurityDescriptor = descriptor;
+        }
+        CreateDirectoryW(folder.c_str(), &attributes);
+        LocalFree(descriptor);
+    }
+    return folder;
 }
 
 }  // namespace Storage
@@ -2629,15 +2666,7 @@ std::optional<std::wstring> SaveScreenshot(gp::Bitmap& image, const std::wstring
         return std::nullopt;
     }
     SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);  // Fails harmlessly when it's there already.
-    SYSTEMTIME now;
-    GetLocalTime(&now);
-    WCHAR name[64];
-    swprintf_s(name, L"Screenshot %04d-%02d-%02d %02d%02d%02d", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
-               now.wSecond);
-    std::wstring path = folder + L"\\" + name + L".png";
-    for (int copy = 2; FileExists(path) && copy < 1000; copy++) {
-        path = folder + L"\\" + name + L" (" + std::to_wstring(copy) + L").png";
-    }
+    std::wstring path = NewFileName(folder, L"Screenshot", L".png");
     if (image.Save(path.c_str(), &png, nullptr) != gp::Ok) {
         return std::nullopt;
     }
@@ -2916,7 +2945,6 @@ public:
     int Height() const { return height_; }
     LONGLONG Duration() const { return duration_; }
     bool IsOpen() const { return (bool)reader_; }
-    bool OnGraphicsCard() const { return (bool)manager_; }
 
     // Goes back or ahead to the key frame at or before the time; reading goes on from there.
     bool Seek(LONGLONG time) {
@@ -3176,7 +3204,6 @@ private:
         started_ = mediaFoundation.Started() && bits && timer && writer.Open(path_, size_.cx, size_.cy);
         SetEvent(ready_);
         if (started_) {
-            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
             LARGE_INTEGER frequency;
             LARGE_INTEGER origin;
             QueryPerformanceFrequency(&frequency);
@@ -3244,15 +3271,29 @@ void DrawCursor(HDC dc, const RECT& area, double scale) {
     if (!GetIconInfo(cursor.hCursor, &icon)) {
         return;
     }
+    // Its size: a black-and-white pointer's mask holds two images, one over the other.
+    BITMAP bitmap{};
+    int width = 0;
+    int height = 0;
+    if (icon.hbmColor && GetObjectW(icon.hbmColor, sizeof(bitmap), &bitmap)) {
+        width = bitmap.bmWidth;
+        height = bitmap.bmHeight;
+    } else if (icon.hbmMask && GetObjectW(icon.hbmMask, sizeof(bitmap), &bitmap)) {
+        width = bitmap.bmWidth;
+        height = bitmap.bmHeight / 2;
+    }
     if (icon.hbmMask) {
         DeleteObject(icon.hbmMask);
     }
     if (icon.hbmColor) {
         DeleteObject(icon.hbmColor);
     }
-    int x = (int)std::lround((cursor.ptScreenPos.x - area.left) * scale) - (int)icon.xHotspot;
-    int y = (int)std::lround((cursor.ptScreenPos.y - area.top) * scale) - (int)icon.yHotspot;
-    DrawIconEx(dc, x, y, cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+    // Scaled with the frame, when it's smaller than the area.
+    bool scaled = scale < 1 && width > 0 && height > 0;
+    int x = (int)std::lround((cursor.ptScreenPos.x - area.left - (int)icon.xHotspot) * scale);
+    int y = (int)std::lround((cursor.ptScreenPos.y - area.top - (int)icon.yHotspot) * scale);
+    DrawIconEx(dc, x, y, cursor.hCursor, scaled ? std::max(1, (int)std::lround(width * scale)) : 0,
+               scaled ? std::max(1, (int)std::lround(height * scale)) : 0, 0, nullptr, DI_NORMAL);
 }
 
 // The frame source for recording an area of the screen, with the mouse pointer.
@@ -3273,21 +3314,14 @@ Recorder::FrameSource ScreenFrames(const RECT& area) {
     };
 }
 
-// The folder for recordings being made and copies put on the clipboard: Taskbar Snipper in the
-// user's temporary files. Files older than a day there are cleaned up.
-std::wstring TemporaryFolder() {
-    WCHAR temp[MAX_PATH + 1];
-    DWORD length = GetTempPathW(ARRAYSIZE(temp), temp);
-    if (length == 0 || length > MAX_PATH) {
-        return L"";
-    }
-    std::wstring folder = std::wstring(temp) + L"Taskbar Snipper";
-    SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);
-    return folder;
+// The folder for recordings being made and trimmed, and copies put on the clipboard: the user's
+// own folder in the mod's storage. Files older than a day there are cleaned up.
+std::wstring WorkFolder() {
+    return Storage::Folder();
 }
 
-void CleanUpTemporaryFolder() {
-    std::wstring folder = TemporaryFolder();
+void CleanUpWorkFolder() {
+    std::wstring folder = WorkFolder();
     if (folder.empty()) {
         return;
     }
@@ -3308,17 +3342,14 @@ void CleanUpTemporaryFolder() {
     FindClose(search);
 }
 
-// A new file name in the folder, "<prefix> <date> <time>.<extension>", numbered if it's taken.
-std::wstring NewFileName(const std::wstring& folder, const wchar_t* prefix, const wchar_t* extension) {
-    SYSTEMTIME now;
-    GetLocalTime(&now);
-    WCHAR name[96];
-    swprintf_s(name, L"%s %04d-%02d-%02d %02d%02d%02d", prefix, now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
-    std::wstring path = folder + L"\\" + name + extension;
-    for (int copy = 2; GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES && copy < 1000; copy++) {
-        path = folder + L"\\" + name + L" (" + std::to_wstring(copy) + L")" + extension;
+// Keeps a recording that wasn't copied or saved (the mod turned off with it open, or still
+// recording) in the recordings folder, rather than losing it. Returns whether it's there.
+bool KeepRecording(const std::wstring& recording, const std::wstring& folder) {
+    if (folder.empty() || GetFileAttributesW(recording.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        return false;
     }
-    return path;
+    SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);  // Fails harmlessly when it's there already.
+    return MoveFileExW(recording.c_str(), NewFileName(folder, L"Screen Recording", L".mp4").c_str(), MOVEFILE_COPY_ALLOWED);
 }
 
 // Puts a file on the clipboard, as File Explorer's Copy does, to paste into a chat, an email or a
@@ -3587,7 +3618,11 @@ public:
         GetCursorPos(&cursor);
         UpdateHover(ToClient(cursor));
         ShowWindow(hwnd_, SW_SHOW);
-        SetForegroundWindow(hwnd_);  // Windows may not allow it; the first click brings it to the front anyway.
+        // The key that opened the overlay went to the app in front (the hook took it), so Windows
+        // would keep the overlay from coming to the front: input from this process first lets it.
+        INPUT input{};
+        SendInput(1, &input, sizeof(INPUT));
+        SetForegroundWindow(hwnd_);
         return true;
     }
 
@@ -3822,7 +3857,6 @@ private:
                 return;
             }
             RECT before = Highlight();
-            current_ = point;
             selection_ = {std::min(anchor_.x, point.x), std::min(anchor_.y, point.y), std::max(anchor_.x, point.x) + 1,
                           std::max(anchor_.y, point.y) + 1};
             SetHighlightChanged(before);
@@ -3848,7 +3882,6 @@ private:
         if (mode_ == Mode::Selecting) {
             dragging_ = true;
             anchor_ = point;
-            current_ = point;
             return;
         }
         pressedItem_ = ItemAt(point);
@@ -3863,7 +3896,6 @@ private:
             UpdateHover(point);
             dragging_ = true;
             anchor_ = point;
-            current_ = point;
             selection_ = {point.x, point.y, point.x + 1, point.y + 1};
             InvalidateRect(hwnd_, nullptr, FALSE);
             return;
@@ -4278,7 +4310,9 @@ private:
         }
     }
 
-    // Lets Windows' color dialog pick any color.
+    // Lets Windows' color dialog pick any color. The dialog belongs to the overlay's window, so the
+    // overlay can't finish while it's open (it would be deleted under the dialog): finishing then
+    // closes the dialog, and waits for it.
     void PickColor() {
         static COLORREF customColors[16] = {};
         gp::Color current(pen_.color);
@@ -4287,7 +4321,15 @@ private:
         choose.rgbResult = RGB(current.GetR(), current.GetG(), current.GetB());
         choose.lpCustColors = customColors;
         choose.Flags = CC_FULLOPEN | CC_RGBINIT;
-        if (ChooseColorW(&choose)) {
+        inColorDialog_ = true;
+        BOOL picked = ChooseColorW(&choose);
+        inColorDialog_ = false;
+        if (finishAfterDialog_) {
+            finishAfterDialog_ = false;
+            Done(finishWhenDialogCloses_);
+            return;
+        }
+        if (picked) {
             SetColor(gp::Color::MakeARGB(255, GetRValue(choose.rgbResult), GetGValue(choose.rgbResult), GetBValue(choose.rgbResult)));
         }
     }
@@ -4332,6 +4374,15 @@ private:
 
     void Done(std::optional<Finish> finish) {
         if (done_) {
+            return;
+        }
+        if (inColorDialog_) {
+            finishAfterDialog_ = true;
+            finishWhenDialogCloses_ = finish;
+            HWND dialog = GetLastActivePopup(hwnd_);
+            if (dialog && dialog != hwnd_) {
+                PostMessageW(dialog, WM_COMMAND, IDCANCEL, 0);
+            }
             return;
         }
         FinishTyping();
@@ -4785,7 +4836,6 @@ private:
     RECT hintRect_{};
     RECT selection_{};
     POINT anchor_{};
-    POINT current_{};
     bool dragging_ = false;
     MarkList marks_;
     std::vector<MarkList> history_;  // The marks before each change, for undo.
@@ -4814,6 +4864,9 @@ private:
     int wheelRemainder_ = 0;
     bool lightTheme_ = false;
     bool done_ = false;
+    bool inColorDialog_ = false;
+    bool finishAfterDialog_ = false;  // Asked to finish while the color dialog was open.
+    std::optional<Finish> finishWhenDialogCloses_;
     HDC blackDc_ = nullptr;
     HBITMAP black_ = nullptr;
     HGDIOBJ blackPrevious_ = nullptr;
@@ -5220,6 +5273,10 @@ public:
             DestroyWindow(hwnd_);
         }
         reader_.Close();
+        // Gone without being closed (the mod turned off), and neither copied nor saved: kept.
+        if (opened_ && !closed_ && !copied_ && !saved_ && saveFolder && KeepRecording(path_, saveFolder())) {
+            return;
+        }
         DeleteFileW(path_.c_str());
     }
 
@@ -5257,7 +5314,12 @@ public:
         DecodeToward(0, 1000);
         StartThumbnails();
         ShowWindow(hwnd_, SW_SHOW);
+        // Stopped with Win+Shift+R, the last input went to another app: input from this process
+        // first lets the window come to the front.
+        INPUT input{};
+        SendInput(1, &input, sizeof(INPUT));
         SetForegroundWindow(hwnd_);
+        opened_ = true;
         return true;
     }
 
@@ -5346,6 +5408,7 @@ public:
                 } else if (copied_ || saved_ ||
                            MessageBoxW(hwnd_, L"The recording hasn't been copied or saved, and it will be gone. Close it anyway?",
                                        L"Taskbar Snipper", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES) {
+                    closed_ = true;
                     DestroyWindow(hwnd_);
                 }
                 return true;
@@ -5876,7 +5939,7 @@ private:
             return;
         }
         StopPlaying();
-        std::wstring folder = save && saveFolder ? saveFolder() : TemporaryFolder();
+        std::wstring folder = save && saveFolder ? saveFolder() : WorkFolder();
         if (!folder.empty()) {
             SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);  // Fails harmlessly when it's there already.
         }
@@ -6196,6 +6259,8 @@ private:
     bool exporting_ = false;
     bool copied_ = false;
     bool saved_ = false;
+    bool opened_ = false;  // Shown, with a recording that could be read.
+    bool closed_ = false;  // By the user.
     std::wstring status_;
 };
 
@@ -6213,7 +6278,7 @@ public:
         }
         pen_.color = (ARGB)Storage::GetInt(L"Color", (int)pen_.color);
         pen_.thickness = std::clamp(Storage::GetInt(L"Thickness", pen_.thickness), kMinThickness, kMaxThickness);
-        CleanUpTemporaryFolder();
+        CleanUpWorkFolder();
         if (!messages_.Create(L"TaskbarSnipper.Mod.Messages") || !notice_.Create()) {
             return false;
         }
@@ -6236,7 +6301,12 @@ public:
     ~SnipApp() {
         hook_.Stop();
         overlay_.reset();
-        recorder_.Stop();
+        // Turning off while recording: the recording is finished and kept in the recordings
+        // folder, as are any not yet copied or saved in trim windows.
+        if (recorder_.Recording()) {
+            recorder_.Stop();
+            KeepRecording(recordingPath_, settings_.recordings.path);
+        }
         recordingBar_.Hide();
         trimWindows_.clear();
         widget_.Destroy();
@@ -6374,7 +6444,7 @@ private:
     }
 
     void StartRecording() {
-        std::wstring folder = TemporaryFolder();
+        std::wstring folder = WorkFolder();
         recordingPath_ = folder.empty() ? L"" : NewFileName(folder, L"Recording", L".mp4");
         SIZE size = VideoSizeFor(recordingArea_.right - recordingArea_.left, recordingArea_.bottom - recordingArea_.top);
         if (recordingPath_.empty() || !recorder_.Start(recordingPath_, size, ScreenFrames(recordingArea_))) {
