@@ -15,8 +15,8 @@
 # Taskbar Snipper
 
 Press **Print Screen**, or click the screenshot button on the taskbar, to select part of the
-screen. A toolbox opens right above the selection to mark it up with arrows, boxes and text, in any
-color and thickness. When you're done, click anywhere outside the selection (or press **Enter**),
+screen. A toolbox opens right above the selection to mark it up with a pencil, lines, arrows, boxes
+and text, in any color and thickness. When you're done, click anywhere outside the selection (or press **Enter**),
 and the screenshot is copied to the clipboard, saved to a folder, or both, as you choose in the
 mod's settings.
 
@@ -28,12 +28,24 @@ mod's settings.
 
 ## The toolbox
 
-- **Arrow** (A), **Box** (B) and **Text** (T). Drag inside the selection to draw an arrow or a box.
-  With Text, click where the text goes and type; **Enter** starts a new line, and **Esc** or a click
-  elsewhere finishes it.
+- **Select** (V), **Pencil** (P), **Line** (L), **Arrow** (A), **Box** (B) and **Text** (T). Drag
+  inside the selection to draw; hold **Shift** to keep a line or arrow to 45° steps, or a box
+  square. A click with the pencil makes a dot. With Text, click where the text goes and type;
+  **Enter** starts a new line, and **Esc** or a click elsewhere finishes it.
 - **Colors**: eight at hand, and the last swatch picks any color.
 - **Thickness**: **−** and **+**, or the mouse wheel. Text gets bigger with it too.
 - **Undo** (Ctrl+Z), **Copy** (Ctrl+C), **Save** (Ctrl+S) and **Close** (Esc).
+
+## Moving and changing marks
+
+- Whatever tool is in hand, **drag** anything already drawn to move it; the pointer turns into a
+  four-way arrow over it. The **Select** tool only selects and moves, for when you'd rather not
+  draw by accident.
+- **Click** a mark to select it. Its color and thickness show in the toolbox, and changing them
+  changes the mark. The **arrow keys** nudge it (with **Shift**, 10 pixels at a time), **Delete**
+  removes it, and **Esc** lets go of it.
+- To change text, click it with the Text tool, or click it again once it's selected.
+- Undo takes back moves and changes too.
 
 **Copy** and **Save** do just that. Clicking outside the selection or pressing Enter does what the
 **When you're done** setting says: copy, save, or both. Screenshots are saved as PNG files named by
@@ -376,6 +388,7 @@ const wchar_t* IconFontName() {
 
 // Glyphs from the Windows icon font for the toolbox.
 const wchar_t kGlyphText[] = {0xE8D2, 0};    // Font
+const wchar_t kGlyphPencil[] = {0xE70F, 0};  // Edit
 const wchar_t kGlyphColor[] = {0xE790, 0};   // Color
 const wchar_t kGlyphMinus[] = {0xE738, 0};   // Remove
 const wchar_t kGlyphPlus[] = {0xE710, 0};    // Add
@@ -1771,26 +1784,40 @@ std::vector<RECT> VisibleWindowRects() {
 }
 
 // ---------------------------------------------------------------------------
-// Annotations: arrows, boxes and text, drawn over the selection.
+// Marks: what the tools draw over the selection. Each kind of mark is a class that draws,
+// measures, hit-tests, moves and copies itself, so the overlay handles every kind the same way,
+// and a new kind needs nothing changed anywhere else.
 
-enum class Tool { Arrow = 0, Box = 1, Text = 2 };
+constexpr int kMinThickness = 1;
+constexpr int kMaxThickness = 20;
 
-struct Annotation {
-    Tool tool = Tool::Arrow;
-    ARGB color = 0;
-    float size = 0;     // Line width for arrows and boxes, font size for text, in pixels.
-    gp::PointF from;    // Where an arrow starts, a box's corner, or the text's top-left.
-    gp::PointF to;      // Where an arrow points, or a box's other corner.
-    std::wstring text;
-};
-
-// The font size for text of a thickness (1 to 20), at a scale.
-float TextSizeFor(int thickness, float scale) {
-    return (12.0f + 2.0f * thickness) * scale;
+gp::RectF BoxRect(const gp::PointF& a, const gp::PointF& b) {
+    return gp::RectF(std::min(a.X, b.X), std::min(a.Y, b.Y), std::abs(b.X - a.X), std::abs(b.Y - a.Y));
 }
 
-std::unique_ptr<gp::Font> AnnotationFont(float size) {
-    return std::make_unique<gp::Font>(L"Segoe UI Semibold", size, gp::FontStyleRegular, gp::UnitPixel);
+float DistanceToSegment(const gp::PointF& point, const gp::PointF& a, const gp::PointF& b) {
+    float dx = b.X - a.X;
+    float dy = b.Y - a.Y;
+    float lengthSquared = dx * dx + dy * dy;
+    float t = lengthSquared > 0 ? std::clamp(((point.X - a.X) * dx + (point.Y - a.Y) * dy) / lengthSquared, 0.0f, 1.0f) : 0;
+    return std::hypot(point.X - (a.X + t * dx), point.Y - (a.Y + t * dy));
+}
+
+// The distance from the point to the rectangle, or 0 inside it.
+float DistanceToRect(const gp::PointF& point, const gp::RectF& rect) {
+    float dx = std::max({rect.X - point.X, 0.0f, point.X - rect.GetRight()});
+    float dy = std::max({rect.Y - point.Y, 0.0f, point.Y - rect.GetBottom()});
+    return std::hypot(dx, dy);
+}
+
+// The point, moved to the nearest 45° direction from the start (Shift held while drawing a line).
+gp::PointF AtStepAngle(const gp::PointF& start, const gp::PointF& point) {
+    float dx = point.X - start.X;
+    float dy = point.Y - start.Y;
+    float length = std::hypot(dx, dy);
+    float step = 3.14159265f / 4;
+    float angle = std::round(std::atan2(dy, dx) / step) * step;
+    return gp::PointF(start.X + length * std::cos(angle), start.Y + length * std::sin(angle));
 }
 
 void DrawArrow(gp::Graphics& graphics, const gp::PointF& from, const gp::PointF& to, const gp::Color& color, float width) {
@@ -1815,83 +1842,360 @@ void DrawArrow(gp::Graphics& graphics, const gp::PointF& from, const gp::PointF&
     graphics.FillPolygon(&brush, points, 3);
 }
 
-gp::RectF BoxRect(const gp::PointF& a, const gp::PointF& b) {
-    return gp::RectF(std::min(a.X, b.X), std::min(a.Y, b.Y), std::abs(b.X - a.X), std::abs(b.Y - a.Y));
-}
+class Mark {
+public:
+    virtual ~Mark() = default;
 
-std::vector<std::wstring> TextLines(const std::wstring& text) {
-    std::vector<std::wstring> lines(1);
-    for (wchar_t c : text) {
-        if (c == L'\n') {
-            lines.emplace_back();
-        } else {
-            lines.back() += c;
+    ARGB color = 0;
+    int thickness = 4;  // The toolbox's thickness, 1 to 20: pixels at 100% scaling.
+    float scale = 1;    // Of the display the selection is on.
+
+    virtual std::unique_ptr<Mark> Clone() const = 0;
+    // Starts it at the point, where the mouse was pressed (or clicked, for text).
+    virtual void StartAt(const gp::PointF& point) = 0;
+    // While it's being drawn, the mouse is at the point. constrain (Shift held) keeps lines to 45°
+    // steps and boxes square.
+    virtual void DragTo(const gp::PointF& point, bool constrain) {}
+    // Whether there's enough of it to keep, once it's drawn (or typed).
+    virtual bool Worthwhile() const = 0;
+    // Draws it; caret draws a text cursor, for text being typed.
+    virtual void Draw(gp::Graphics& graphics, bool caret) const = 0;
+    // The area it covers, leaving out the width of its lines.
+    virtual gp::RectF Outline() const = 0;
+    // The distance from the point to what it draws (0 on it, and inside text).
+    virtual float DistanceTo(const gp::PointF& point) const = 0;
+    virtual void MoveBy(float dx, float dy) = 0;
+    // Its text, for a mark that can be typed into, or null.
+    virtual std::wstring* Text() { return nullptr; }
+
+    // The width of its lines, in pixels.
+    float Width() const { return thickness * scale; }
+
+    // Whether the point is on it, as far as clicking it goes.
+    bool Hit(const gp::PointF& point) const { return DistanceTo(point) <= Width() / 2 + 5 * scale; }
+
+    // Where it draws, with room to spare, in whole pixels: to repaint.
+    RECT Bounds() const {
+        gp::RectF outline = Outline();
+        float margin = Width() * 4 + 8 * scale;
+        return {(LONG)std::floor(outline.X - margin), (LONG)std::floor(outline.Y - margin),
+                (LONG)std::ceil(outline.GetRight() + margin), (LONG)std::ceil(outline.GetBottom() + margin)};
+    }
+};
+
+// A freehand line, following the mouse.
+class PencilMark : public Mark {
+public:
+    std::unique_ptr<Mark> Clone() const override { return std::make_unique<PencilMark>(*this); }
+
+    void StartAt(const gp::PointF& point) override { points_ = {point}; }
+
+    void DragTo(const gp::PointF& point, bool constrain) override {
+        const gp::PointF& last = points_.back();
+        if (std::hypot(point.X - last.X, point.Y - last.Y) >= 1.5f * scale) {
+            points_.push_back(point);
         }
     }
-    return lines;
-}
 
-// Draws the annotation. caret draws a text cursor at the end of the text being typed.
-void DrawAnnotation(gp::Graphics& graphics, const Annotation& annotation, bool caret = false) {
-    gp::Color color(annotation.color);
-    switch (annotation.tool) {
-        case Tool::Arrow:
-            DrawArrow(graphics, annotation.from, annotation.to, color, annotation.size);
-            break;
-        case Tool::Box: {
-            gp::Pen pen(color, annotation.size);
-            pen.SetLineJoin(gp::LineJoinRound);
-            gp::RectF rect = BoxRect(annotation.from, annotation.to);
-            graphics.DrawRectangle(&pen, rect);
-            break;
+    bool Worthwhile() const override { return !points_.empty(); }
+
+    void Draw(gp::Graphics& graphics, bool caret) const override {
+        gp::Color ink(color);
+        if (points_.size() == 1) {
+            // A click makes a dot.
+            gp::SolidBrush brush(ink);
+            graphics.FillEllipse(&brush, points_[0].X - Width() / 2, points_[0].Y - Width() / 2, Width(), Width());
+            return;
         }
-        case Tool::Text: {
-            std::unique_ptr<gp::Font> font = AnnotationFont(annotation.size);
-            float lineHeight = font->GetHeight(&graphics);
-            gp::SolidBrush brush(color);
-            gp::StringFormat format(gp::StringFormat::GenericTypographic());
-            format.SetFormatFlags(format.GetFormatFlags() | gp::StringFormatFlagsMeasureTrailingSpaces);
-            std::vector<std::wstring> lines = TextLines(annotation.text);
-            for (size_t i = 0; i < lines.size(); i++) {
-                graphics.DrawString(lines[i].c_str(), (INT)lines[i].size(), font.get(),
-                                    gp::PointF(annotation.from.X, annotation.from.Y + lineHeight * i), &format, &brush);
+        gp::Pen pen(ink, Width());
+        pen.SetStartCap(gp::LineCapRound);
+        pen.SetEndCap(gp::LineCapRound);
+        pen.SetLineJoin(gp::LineJoinRound);
+        graphics.DrawLines(&pen, points_.data(), (INT)points_.size());
+    }
+
+    gp::RectF Outline() const override {
+        float left = points_[0].X, top = points_[0].Y, right = left, bottom = top;
+        for (const gp::PointF& point : points_) {
+            left = std::min(left, point.X);
+            top = std::min(top, point.Y);
+            right = std::max(right, point.X);
+            bottom = std::max(bottom, point.Y);
+        }
+        return gp::RectF(left, top, right - left, bottom - top);
+    }
+
+    float DistanceTo(const gp::PointF& point) const override {
+        float nearest = std::hypot(point.X - points_[0].X, point.Y - points_[0].Y);
+        for (size_t i = 1; i < points_.size(); i++) {
+            nearest = std::min(nearest, DistanceToSegment(point, points_[i - 1], points_[i]));
+        }
+        return nearest;
+    }
+
+    void MoveBy(float dx, float dy) override {
+        for (gp::PointF& point : points_) {
+            point.X += dx;
+            point.Y += dy;
+        }
+    }
+
+private:
+    std::vector<gp::PointF> points_;
+};
+
+// A straight line from where the mouse was pressed to where it's let go: the base of lines and
+// arrows.
+class SegmentMark : public Mark {
+public:
+    void StartAt(const gp::PointF& point) override { from_ = to_ = point; }
+
+    void DragTo(const gp::PointF& point, bool constrain) override { to_ = constrain ? AtStepAngle(from_, point) : point; }
+
+    bool Worthwhile() const override { return std::hypot(to_.X - from_.X, to_.Y - from_.Y) >= 3 * scale; }
+
+    gp::RectF Outline() const override { return BoxRect(from_, to_); }
+
+    float DistanceTo(const gp::PointF& point) const override { return DistanceToSegment(point, from_, to_); }
+
+    void MoveBy(float dx, float dy) override {
+        from_.X += dx;
+        from_.Y += dy;
+        to_.X += dx;
+        to_.Y += dy;
+    }
+
+protected:
+    gp::PointF from_;
+    gp::PointF to_;
+};
+
+class LineMark : public SegmentMark {
+public:
+    std::unique_ptr<Mark> Clone() const override { return std::make_unique<LineMark>(*this); }
+
+    void Draw(gp::Graphics& graphics, bool caret) const override {
+        gp::Pen pen(gp::Color(color), Width());
+        pen.SetStartCap(gp::LineCapRound);
+        pen.SetEndCap(gp::LineCapRound);
+        graphics.DrawLine(&pen, from_, to_);
+    }
+};
+
+class ArrowMark : public SegmentMark {
+public:
+    std::unique_ptr<Mark> Clone() const override { return std::make_unique<ArrowMark>(*this); }
+
+    void Draw(gp::Graphics& graphics, bool caret) const override { DrawArrow(graphics, from_, to_, gp::Color(color), Width()); }
+};
+
+class BoxMark : public Mark {
+public:
+    std::unique_ptr<Mark> Clone() const override { return std::make_unique<BoxMark>(*this); }
+
+    void StartAt(const gp::PointF& point) override { from_ = to_ = point; }
+
+    void DragTo(const gp::PointF& point, bool constrain) override {
+        to_ = point;
+        if (constrain) {
+            float side = std::max(std::abs(point.X - from_.X), std::abs(point.Y - from_.Y));
+            to_ = gp::PointF(from_.X + (point.X < from_.X ? -side : side), from_.Y + (point.Y < from_.Y ? -side : side));
+        }
+    }
+
+    bool Worthwhile() const override { return std::hypot(to_.X - from_.X, to_.Y - from_.Y) >= 3 * scale; }
+
+    void Draw(gp::Graphics& graphics, bool caret) const override {
+        gp::Pen pen(gp::Color(color), Width());
+        pen.SetLineJoin(gp::LineJoinRound);
+        graphics.DrawRectangle(&pen, Outline());
+    }
+
+    gp::RectF Outline() const override { return BoxRect(from_, to_); }
+
+    // On its edges only, so arrows and text can go inside a box.
+    float DistanceTo(const gp::PointF& point) const override {
+        gp::RectF rect = Outline();
+        gp::PointF corners[] = {{rect.X, rect.Y}, {rect.GetRight(), rect.Y}, {rect.GetRight(), rect.GetBottom()}, {rect.X, rect.GetBottom()}};
+        float nearest = DistanceToSegment(point, corners[3], corners[0]);
+        for (int i = 1; i < 4; i++) {
+            nearest = std::min(nearest, DistanceToSegment(point, corners[i - 1], corners[i]));
+        }
+        return nearest;
+    }
+
+    void MoveBy(float dx, float dy) override {
+        from_.X += dx;
+        from_.Y += dy;
+        to_.X += dx;
+        to_.Y += dy;
+    }
+
+private:
+    gp::PointF from_;
+    gp::PointF to_;
+};
+
+class TextMark : public Mark {
+public:
+    std::unique_ptr<Mark> Clone() const override { return std::make_unique<TextMark>(*this); }
+
+    // The click is where the middle of the first line goes.
+    void StartAt(const gp::PointF& point) override { topLeft_ = gp::PointF(point.X, point.Y - FontSize() * 0.7f); }
+
+    bool Worthwhile() const override { return !Trim(text_).empty(); }
+
+    void Draw(gp::Graphics& graphics, bool caret) const override {
+        gp::Font font(L"Segoe UI Semibold", FontSize(), gp::FontStyleRegular, gp::UnitPixel);
+        gp::StringFormat format(gp::StringFormat::GenericTypographic());
+        format.SetFormatFlags(format.GetFormatFlags() | gp::StringFormatFlagsMeasureTrailingSpaces);
+        gp::SolidBrush brush{gp::Color(color)};
+        float lineHeight = font.GetHeight(&graphics);
+        std::vector<std::wstring> lines = Lines();
+        for (size_t i = 0; i < lines.size(); i++) {
+            graphics.DrawString(lines[i].c_str(), (INT)lines[i].size(), &font, gp::PointF(topLeft_.X, topLeft_.Y + lineHeight * i),
+                                &format, &brush);
+        }
+        if (caret) {
+            gp::RectF last;
+            graphics.MeasureString(lines.back().c_str(), (INT)lines.back().size(), &font, gp::PointF(0, 0), &format, &last);
+            float x = topLeft_.X + last.Width + FontSize() * 0.05f;
+            float y = topLeft_.Y + lineHeight * (lines.size() - 1);
+            gp::Pen pen(gp::Color(color), std::max(1.5f, FontSize() / 14));
+            graphics.DrawLine(&pen, x, y + lineHeight * 0.12f, x, y + lineHeight * 0.92f);
+        }
+    }
+
+    gp::RectF Outline() const override {
+        gp::Bitmap measuring(1, 1, PixelFormat32bppARGB);
+        gp::Graphics graphics(&measuring);
+        gp::Font font(L"Segoe UI Semibold", FontSize(), gp::FontStyleRegular, gp::UnitPixel);
+        gp::StringFormat format(gp::StringFormat::GenericTypographic());
+        format.SetFormatFlags(format.GetFormatFlags() | gp::StringFormatFlagsMeasureTrailingSpaces);
+        std::vector<std::wstring> lines = Lines();
+        float width = FontSize() * 0.3f;  // Room for the caret.
+        for (const std::wstring& line : lines) {
+            gp::RectF bounds;
+            graphics.MeasureString(line.c_str(), (INT)line.size(), &font, gp::PointF(0, 0), &format, &bounds);
+            width = std::max(width, bounds.Width + FontSize() * 0.3f);
+        }
+        return gp::RectF(topLeft_.X, topLeft_.Y, width, font.GetHeight(&graphics) * lines.size());
+    }
+
+    float DistanceTo(const gp::PointF& point) const override { return DistanceToRect(point, Outline()); }
+
+    void MoveBy(float dx, float dy) override {
+        topLeft_.X += dx;
+        topLeft_.Y += dy;
+    }
+
+    std::wstring* Text() override { return &text_; }
+
+private:
+    // Text gets bigger with the thickness.
+    float FontSize() const { return (12.0f + 2.0f * thickness) * scale; }
+
+    std::vector<std::wstring> Lines() const {
+        std::vector<std::wstring> lines(1);
+        for (wchar_t c : text_) {
+            if (c == L'\n') {
+                lines.emplace_back();
+            } else {
+                lines.back() += c;
             }
-            if (caret) {
-                gp::RectF last;
-                graphics.MeasureString(lines.back().c_str(), (INT)lines.back().size(), font.get(), gp::PointF(0, 0), &format, &last);
-                float x = annotation.from.X + last.Width + annotation.size * 0.05f;
-                float y = annotation.from.Y + lineHeight * (lines.size() - 1);
-                gp::Pen pen(color, std::max(1.5f, annotation.size / 14));
-                graphics.DrawLine(&pen, x, y + lineHeight * 0.12f, x, y + lineHeight * 0.92f);
-            }
-            break;
         }
+        return lines;
     }
+
+    gp::PointF topLeft_;
+    std::wstring text_;
+};
+
+// ---------------------------------------------------------------------------
+// The tools. Each is one entry in kTools: its name and shortcut, its cursor, its toolbox icon and
+// the mark it makes. The toolbox, its tooltips, the shortcuts and the overlay all go by this list,
+// so adding a tool is adding an entry (and its mark).
+
+struct Tool {
+    const wchar_t* name;  // For its tooltip.
+    wchar_t key;          // Its shortcut, a capital letter; also how the last tool used is remembered.
+    LPCWSTR cursor;       // Over the selection.
+    // Draws its icon in the toolbox.
+    void (*drawIcon)(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale);
+    // Makes the mark it draws, or null for a tool that draws none (selecting and moving).
+    std::unique_ptr<Mark> (*makeMark)();
+    // A click places the mark and typing fills it (text), rather than a drag drawing it.
+    bool typed;
+};
+
+// A mouse pointer.
+void DrawSelectIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    auto at = [&](float x, float y) { return gp::PointF(box.X + box.Width * x, box.Y + box.Height * y); };
+    gp::PointF outline[] = {at(0.26f, 0.06f), at(0.26f, 0.84f), at(0.44f, 0.67f), at(0.57f, 0.95f),
+                            at(0.69f, 0.89f), at(0.56f, 0.62f), at(0.80f, 0.62f)};
+    gp::Pen pen(color, 1.5f * scale);
+    pen.SetLineJoin(gp::LineJoinRound);
+    graphics.DrawPolygon(&pen, outline, ARRAYSIZE(outline));
 }
 
-// Where the annotation draws, roughly, in whole pixels, to repaint.
-RECT AnnotationBounds(const Annotation& annotation) {
-    float margin = annotation.size * 4 + 4;
-    gp::RectF rect;
-    if (annotation.tool == Tool::Text) {
-        size_t lines = TextLines(annotation.text).size();
-        size_t longest = 0;
-        for (const std::wstring& line : TextLines(annotation.text)) {
-            longest = std::max(longest, line.size());
+void DrawPencilIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    DrawGlyph(graphics, kGlyphPencil, 16 * scale, box, color);
+}
+
+void DrawLineIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    gp::Pen pen(color, 1.6f * scale);
+    pen.SetStartCap(gp::LineCapRound);
+    pen.SetEndCap(gp::LineCapRound);
+    graphics.DrawLine(&pen, box.X + 2 * scale, box.GetBottom() - 2 * scale, box.GetRight() - 2 * scale, box.Y + 2 * scale);
+}
+
+void DrawArrowIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    DrawArrow(graphics, gp::PointF(box.X + 1 * scale, box.GetBottom() - 1 * scale), gp::PointF(box.GetRight() - 1 * scale, box.Y + 1 * scale),
+              color, 1.6f * scale);
+}
+
+void DrawBoxIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    gp::Pen pen(color, 1.6f * scale);
+    gp::RectF square = box;
+    square.Inflate(-2 * scale, -3 * scale);
+    graphics.DrawRectangle(&pen, square);
+}
+
+void DrawTextIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, float scale) {
+    DrawGlyph(graphics, kGlyphText, 16 * scale, box, color);
+}
+
+template <typename T>
+std::unique_ptr<Mark> MakeMark() {
+    return std::make_unique<T>();
+}
+
+const Tool kTools[] = {
+    {L"Select and move", L'V', IDC_ARROW, DrawSelectIcon, nullptr, false},
+    {L"Pencil", L'P', IDC_CROSS, DrawPencilIcon, MakeMark<PencilMark>, false},
+    {L"Line", L'L', IDC_CROSS, DrawLineIcon, MakeMark<LineMark>, false},
+    {L"Arrow", L'A', IDC_CROSS, DrawArrowIcon, MakeMark<ArrowMark>, false},
+    {L"Box", L'B', IDC_CROSS, DrawBoxIcon, MakeMark<BoxMark>, false},
+    {L"Text", L'T', IDC_IBEAM, DrawTextIcon, MakeMark<TextMark>, true},
+};
+constexpr int kToolCount = ARRAYSIZE(kTools);
+constexpr wchar_t kDefaultToolKey = L'A';
+
+// The tool with the shortcut, or -1.
+int ToolForKey(wchar_t key) {
+    for (int i = 0; i < kToolCount; i++) {
+        if (kTools[i].key == key) {
+            return i;
         }
-        rect = gp::RectF(annotation.from.X, annotation.from.Y, annotation.size * (longest + 2), annotation.size * 1.5f * lines);
-    } else {
-        rect = BoxRect(annotation.from, annotation.to);
     }
-    return {(LONG)std::floor(rect.X - margin), (LONG)std::floor(rect.Y - margin), (LONG)std::ceil(rect.GetRight() + margin),
-            (LONG)std::ceil(rect.GetBottom() + margin)};
+    return -1;
 }
 
 // ---------------------------------------------------------------------------
-// The finished screenshot: the selected part of the screen with its annotations.
+// The finished screenshot: the selected part of the screen with its marks.
 
 std::unique_ptr<gp::Bitmap> ComposeScreenshot(const ScreenCopy& screen, const RECT& selection,
-                                              const std::vector<Annotation>& annotations) {
+                                              const std::vector<std::unique_ptr<Mark>>& marks) {
     int width = selection.right - selection.left;
     int height = selection.bottom - selection.top;
     auto image = std::make_unique<gp::Bitmap>(width, height, PixelFormat32bppARGB);
@@ -1913,8 +2217,8 @@ std::unique_ptr<gp::Bitmap> ComposeScreenshot(const ScreenCopy& screen, const RE
     graphics.SetSmoothingMode(gp::SmoothingModeAntiAlias);
     graphics.SetTextRenderingHint(gp::TextRenderingHintAntiAliasGridFit);
     graphics.TranslateTransform((float)-selection.left, (float)-selection.top);
-    for (const Annotation& annotation : annotations) {
-        DrawAnnotation(graphics, annotation);
+    for (const std::unique_ptr<Mark>& mark : marks) {
+        mark->Draw(graphics, false);
     }
     return image;
 }
@@ -2190,7 +2494,7 @@ enum class Finish { Default, Copy, Save };
 
 // The tool, color and thickness, remembered between screenshots.
 struct Pen {
-    Tool tool = Tool::Arrow;
+    int tool = ToolForKey(kDefaultToolKey);  // In kTools.
     ARGB color = 0xFFE81123;
     int thickness = 4;  // 1 to 20, in pixels at 100% scaling.
 };
@@ -2198,8 +2502,6 @@ struct Pen {
 const ARGB kSwatches[] = {0xFFE81123, 0xFFFF8C00, 0xFFFFD60A, 0xFF16C60C, 0xFF0078D4, 0xFF8E44EC, 0xFFFFFFFF, 0xFF000000};
 const wchar_t* const kSwatchNames[] = {L"Red", L"Orange", L"Yellow", L"Green", L"Blue", L"Purple", L"White", L"Black"};
 constexpr int kSwatchCount = ARRAYSIZE(kSwatches);
-constexpr int kMinThickness = 1;
-constexpr int kMaxThickness = 20;
 
 class Overlay {
 public:
@@ -2211,6 +2513,9 @@ public:
 
     Overlay(std::unique_ptr<ScreenCopy> screen, std::vector<RECT> windows, const Pen& pen)
         : screen_(std::move(screen)), pen_(pen) {
+        if (pen_.tool < 0 || pen_.tool >= kToolCount) {
+            pen_.tool = ToolForKey(kDefaultToolKey);
+        }
         // The windows' outlines, in the overlay's coordinates (the top-left of the desktop is 0, 0).
         for (const RECT& window : windows) {
             windows_.push_back(ToClient(window));
@@ -2256,24 +2561,27 @@ public:
         return true;
     }
 
-    // Esc: finishes the text being typed, or stops a drawing, or else cancels.
+    // Esc: finishes the text being typed, stops a drawing or a move, or deselects the selected
+    // mark, or else cancels.
     void Escape() {
         if (typing_) {
             FinishTyping();
         } else if (drawing_) {
-            InvalidateClient(AnnotationBounds(*drawing_));
-            drawing_.reset();
-            ReleaseMouse();
+            CancelDrawing();
+        } else if (moving_ >= 0) {
+            EndMove();
+        } else if (selected_ >= 0) {
+            SelectMark(-1);
         } else {
             Done(std::nullopt);
         }
     }
 
-    // The selection and annotations, for making the screenshot once the overlay is done.
+    // The selection and marks, for making the screenshot once the overlay is done.
     const ScreenCopy& Screen() const { return *screen_; }
     RECT SelectionOnScreen() const { return ToScreen(selection_); }
     RECT SelectionInOverlay() const { return selection_; }
-    const std::vector<Annotation>& Annotations() const { return annotations_; }
+    const std::vector<std::unique_ptr<Mark>>& Marks() const { return marks_; }
 
     bool HandleMessage(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result) {
         switch (message) {
@@ -2333,7 +2641,7 @@ public:
             case WM_TIMER:
                 if (wParam == kCaretTimer && typing_) {
                     caretOn_ = !caretOn_;
-                    InvalidateClient(AnnotationBounds(annotations_.back()));
+                    InvalidateClient(marks_[selected_]->Bounds());
                 }
                 return true;
             case WM_DISPLAYCHANGE:
@@ -2351,9 +2659,7 @@ private:
 
     enum class Item {
         None,
-        Arrow,
-        Box,
-        Text,
+        Tool,    // index says which, in kTools.
         Swatch,  // index says which.
         CustomColor,
         Thinner,
@@ -2367,9 +2673,15 @@ private:
 
     struct ToolboxItem {
         Item item;
-        int index;  // For swatches.
+        int index;  // For tools and swatches.
         RECT rect;  // In the overlay's coordinates.
     };
+
+    // A run of the same change to the same mark (turning the mouse wheel, pressing an arrow key
+    // again and again) is undone in one step.
+    enum class Change { Other, Restyle, Nudge };
+
+    using MarkList = std::vector<std::unique_ptr<Mark>>;
 
     static constexpr UINT_PTR kCaretTimer = 1;
 
@@ -2452,6 +2764,26 @@ private:
         return {left, top, left + width, top + height};
     }
 
+    // The point, kept inside the selection: marks are drawn there.
+    gp::PointF InSelection(POINT point) const {
+        return gp::PointF((float)std::clamp(point.x, selection_.left, selection_.right - 1),
+                          (float)std::clamp(point.y, selection_.top, selection_.bottom - 1));
+    }
+
+    // The topmost mark under the point, or -1.
+    int MarkAt(POINT point) const {
+        if (mode_ != Mode::Editing || !PtInRect(&selection_, point)) {
+            return -1;
+        }
+        gp::PointF at((float)point.x, (float)point.y);
+        for (int i = (int)marks_.size() - 1; i >= 0; i--) {
+            if (marks_[i]->Hit(at)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     void OnMouseMove(POINT point) {
         if (mode_ == Mode::Selecting) {
             if (!dragging_) {
@@ -2466,15 +2798,19 @@ private:
             return;
         }
         if (drawing_) {
-            RECT before = AnnotationBounds(*drawing_);
-            // Inside the selection only.
-            drawing_->to = gp::PointF((float)std::clamp(point.x, selection_.left, selection_.right - 1),
-                                      (float)std::clamp(point.y, selection_.top, selection_.bottom - 1));
+            RECT before = drawing_->Bounds();
+            drawing_->DragTo(InSelection(point), (GetKeyState(VK_SHIFT) & 0x8000) != 0);
             InvalidateClient(before);
-            InvalidateClient(AnnotationBounds(*drawing_));
+            InvalidateClient(drawing_->Bounds());
             return;
         }
-        SetHoverItem(ItemAt(point));
+        if (moving_ >= 0) {
+            MoveTo(point);
+            return;
+        }
+        ToolboxItem item = ItemAt(point);
+        SetHoverItem(item);
+        SetHoverMark(item.item == Item::None ? MarkAt(point) : -1);
     }
 
     void OnMouseDown(POINT point) {
@@ -2493,32 +2829,44 @@ private:
             pressedOutside_ = true;
             return;
         }
-        if (typing_) {
-            FinishTyping();
+        // Any tool moves a mark it's pressed on.
+        int hit = MarkAt(point);
+        if (typing_ && hit != selected_) {
+            FinishTyping();  // May take away empty text, so look again.
+            hit = MarkAt(point);
         }
-        gp::PointF at((float)point.x, (float)point.y);
-        if (pen_.tool == Tool::Text) {
-            Annotation text;
-            text.tool = Tool::Text;
-            text.color = pen_.color;
-            text.size = TextSizeFor(pen_.thickness, Scale());
-            // The click is where the middle of the first line goes.
-            text.from = gp::PointF(at.X, at.Y - text.size * 0.7f);
-            annotations_.push_back(text);
-            typing_ = true;
-            caretOn_ = true;
-            SetTimer(hwnd_, kCaretTimer, 530, nullptr);
-            InvalidateClient(AnnotationBounds(annotations_.back()));
+        if (hit >= 0) {
+            pressedSelected_ = hit == selected_;
+            SelectMark(hit);
+            SetHoverMark(-1);
+            moving_ = hit;
+            movePressed_ = point;
+            moveLast_ = InSelection(point);
+            moved_ = false;
+            return;
+        }
+        SelectMark(-1);
+        const Tool& tool = kTools[pen_.tool];
+        if (!tool.makeMark) {
             ReleaseMouse();
             return;
         }
-        Annotation shape;
-        shape.tool = pen_.tool;
-        shape.color = pen_.color;
-        shape.size = pen_.thickness * Scale();
-        shape.from = at;
-        shape.to = at;
-        drawing_ = shape;
+        std::unique_ptr<Mark> mark = tool.makeMark();
+        mark->color = pen_.color;
+        mark->thickness = pen_.thickness;
+        mark->scale = Scale();
+        mark->StartAt(InSelection(point));
+        SetHoverMark(-1);
+        if (tool.typed) {
+            PushHistory();
+            marks_.push_back(std::move(mark));
+            SelectMark((int)marks_.size() - 1);
+            StartTyping(true);
+            ReleaseMouse();
+            return;
+        }
+        drawing_ = std::move(mark);
+        InvalidateClient(drawing_->Bounds());
     }
 
     void OnMouseUp(POINT point) {
@@ -2542,14 +2890,23 @@ private:
             return;
         }
         if (drawing_) {
-            Annotation shape = *drawing_;
-            drawing_.reset();
-            float length = std::hypot(shape.to.X - shape.from.X, shape.to.Y - shape.from.Y);
-            if (length >= 3 * Scale()) {
-                annotations_.push_back(shape);
+            std::unique_ptr<Mark> mark = std::move(drawing_);
+            InvalidateClient(mark->Bounds());
+            if (mark->Worthwhile()) {
+                PushHistory();
+                marks_.push_back(std::move(mark));
             }
-            InvalidateClient(AnnotationBounds(shape));
-            InvalidateToolbox();  // Undo may have become available.
+            return;
+        }
+        if (moving_ >= 0) {
+            int index = moving_;
+            bool moved = moved_;
+            EndMove();
+            // A click on text, with the text tool or once it's selected, types into it.
+            if (!moved && !typing_ && marks_[index]->Text() && (kTools[pen_.tool].typed || pressedSelected_)) {
+                StartTyping(false);
+            }
+            SetHoverMark(MarkAt(point));
             return;
         }
         Item released = ItemAt(point).item;
@@ -2564,6 +2921,7 @@ private:
 
     void OnKeyDown(UINT key) {
         bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         switch (key) {
             case VK_ESCAPE:
                 Escape();
@@ -2594,21 +2952,30 @@ private:
         if (typing_) {
             return;  // Letters are typed, through WM_CHAR.
         }
+        int step = shift ? 10 : 1;
         switch (key) {
-            case 'A':
-                SetTool(Tool::Arrow);
-                return;
-            case 'B':
-            case 'R':
-                SetTool(Tool::Box);
-                return;
-            case 'T':
-                SetTool(Tool::Text);
-                return;
             case VK_BACK:
             case VK_DELETE:
-                Undo();
+                if (!DeleteSelected()) {
+                    Undo();
+                }
                 return;
+            case VK_LEFT:
+                Nudge(-step, 0);
+                return;
+            case VK_RIGHT:
+                Nudge(step, 0);
+                return;
+            case VK_UP:
+                Nudge(0, -step);
+                return;
+            case VK_DOWN:
+                Nudge(0, step);
+                return;
+        }
+        int tool = ToolForKey((wchar_t)key);
+        if (tool >= 0) {
+            SetTool(tool);
         }
     }
 
@@ -2616,51 +2983,216 @@ private:
         if (!typing_) {
             return;
         }
-        Annotation& text = annotations_.back();
-        RECT before = AnnotationBounds(text);
+        Mark& mark = *marks_[selected_];
+        std::wstring& text = *mark.Text();
+        RECT before = mark.Bounds();
         if (c == L'\b') {
-            if (!text.text.empty()) {
-                text.text.pop_back();
+            if (!text.empty()) {
+                text.pop_back();
             }
         } else if (c == L'\r') {
-            text.text += L'\n';
+            text += L'\n';
         } else if (c >= 32 && c != 127) {
-            text.text += c;
+            text += c;
         } else {
             return;
         }
+        typingChanged_ = true;
         caretOn_ = true;
         SetTimer(hwnd_, kCaretTimer, 530, nullptr);  // Restarts the blink, so the caret shows while typing.
         InvalidateClient(before);
-        InvalidateClient(AnnotationBounds(text));
+        InvalidateClient(mark.Bounds());
     }
 
+    // ---- Marks
+
+    MarkList CopyOfMarks() const {
+        MarkList copy;
+        for (const std::unique_ptr<Mark>& mark : marks_) {
+            copy.push_back(mark->Clone());
+        }
+        return copy;
+    }
+
+    // Remembers the marks as they are, before a change, for undo.
+    void PushHistory(Change change = Change::Other, int mark = -1) {
+        if (change != Change::Other && change == lastChange_ && mark == lastChangeMark_ && !history_.empty()) {
+            return;
+        }
+        history_.push_back(CopyOfMarks());
+        lastChange_ = change;
+        lastChangeMark_ = mark;
+        InvalidateToolbox();  // Undo is available.
+    }
+
+    // Before changing a mark. Text is undone as a whole, back to before it was typed into.
+    void BeforeChange(Change change, int mark) {
+        if (typing_) {
+            typingChanged_ = true;
+        } else {
+            PushHistory(change, mark);
+        }
+    }
+
+    // Selects the mark, or none with -1. The toolbox takes on its color and thickness, and
+    // changing them changes the mark.
+    void SelectMark(int index) {
+        if (index == selected_) {
+            return;
+        }
+        if (selected_ >= 0) {
+            InvalidateClient(marks_[selected_]->Bounds());
+        }
+        selected_ = index;
+        lastChange_ = Change::Other;
+        if (index >= 0) {
+            const Mark& mark = *marks_[index];
+            InvalidateClient(mark.Bounds());
+            if (pen_.color != mark.color || pen_.thickness != mark.thickness) {
+                pen_.color = mark.color;
+                pen_.thickness = mark.thickness;
+                PenChanged();
+            }
+        }
+        InvalidateToolbox();
+    }
+
+    // The mark under the mouse gets a faint outline, to show it can be moved.
+    void SetHoverMark(int index) {
+        if (index == hoverMark_) {
+            return;
+        }
+        if (hoverMark_ >= 0) {
+            InvalidateClient(marks_[hoverMark_]->Bounds());
+        }
+        hoverMark_ = index;
+        if (hoverMark_ >= 0) {
+            InvalidateClient(marks_[hoverMark_]->Bounds());
+        }
+    }
+
+    // Moves the mark being dragged with the mouse, once the mouse has moved far enough to be a drag
+    // rather than a click.
+    void MoveTo(POINT point) {
+        if (!moved_) {
+            if (std::abs(point.x - movePressed_.x) < GetSystemMetrics(SM_CXDRAG) &&
+                std::abs(point.y - movePressed_.y) < GetSystemMetrics(SM_CYDRAG)) {
+                return;
+            }
+            moved_ = true;
+            BeforeChange(Change::Other, moving_);
+        }
+        Mark& mark = *marks_[moving_];
+        gp::PointF to = InSelection(point);  // The part held stays in the selection.
+        RECT before = mark.Bounds();
+        mark.MoveBy(to.X - moveLast_.X, to.Y - moveLast_.Y);
+        moveLast_ = to;
+        InvalidateClient(before);
+        InvalidateClient(mark.Bounds());
+    }
+
+    void EndMove() {
+        if (moving_ >= 0) {
+            moving_ = -1;
+            ReleaseMouse();
+            InvalidateToolbox();
+        }
+    }
+
+    void CancelDrawing() {
+        if (drawing_) {
+            InvalidateClient(drawing_->Bounds());
+            drawing_.reset();
+            ReleaseMouse();
+        }
+    }
+
+    // Moves the selected mark by whole pixels (arrow keys).
+    void Nudge(int dx, int dy) {
+        if (selected_ < 0 || drawing_ || moving_ >= 0) {
+            return;
+        }
+        Mark& mark = *marks_[selected_];
+        BeforeChange(Change::Nudge, selected_);
+        RECT before = mark.Bounds();
+        mark.MoveBy((float)dx, (float)dy);
+        InvalidateClient(before);
+        InvalidateClient(mark.Bounds());
+    }
+
+    // Deletes the selected mark, if there is one.
+    bool DeleteSelected() {
+        if (selected_ < 0) {
+            return false;
+        }
+        EndMove();
+        PushHistory();
+        InvalidateClient(marks_[selected_]->Bounds());
+        marks_.erase(marks_.begin() + selected_);
+        selected_ = -1;
+        hoverMark_ = -1;
+        InvalidateToolbox();
+        return true;
+    }
+
+    void StartTyping(bool isNew) {
+        if (!isNew) {
+            PushHistory();
+        }
+        typing_ = true;
+        typingNew_ = isNew;
+        typingChanged_ = false;
+        caretOn_ = true;
+        SetTimer(hwnd_, kCaretTimer, 530, nullptr);
+        InvalidateClient(marks_[selected_]->Bounds());
+        InvalidateToolbox();
+    }
+
+    // Stops typing, and deselects the text. Text left empty goes.
     void FinishTyping() {
         if (!typing_) {
             return;
         }
+        EndMove();  // The text may go.
         typing_ = false;
         KillTimer(hwnd_, kCaretTimer);
-        RECT bounds = AnnotationBounds(annotations_.back());
-        if (Trim(annotations_.back().text).empty()) {
-            annotations_.pop_back();
+        int index = selected_;
+        InvalidateClient(marks_[index]->Bounds());
+        selected_ = -1;
+        lastChange_ = Change::Other;
+        if (!marks_[index]->Worthwhile()) {
+            marks_.erase(marks_.begin() + index);
+            hoverMark_ = -1;
+            if (typingNew_) {
+                history_.pop_back();  // As if it was never there.
+            }
+        } else if (!typingNew_ && !typingChanged_) {
+            history_.pop_back();  // Nothing changed.
         }
-        InvalidateClient(bounds);
         InvalidateToolbox();
     }
 
     void Undo() {
         FinishTyping();
-        if (annotations_.empty()) {
+        CancelDrawing();
+        EndMove();
+        if (history_.empty()) {
             return;
         }
-        InvalidateClient(AnnotationBounds(annotations_.back()));
-        annotations_.pop_back();
+        marks_ = std::move(history_.back());
+        history_.pop_back();
+        selected_ = -1;
+        hoverMark_ = -1;
+        lastChange_ = Change::Other;
+        InvalidateClient(selection_);  // Marks are only drawn there.
         InvalidateToolbox();
     }
 
-    void SetTool(Tool tool) {
+    void SetTool(int tool) {
         FinishTyping();
+        if (kTools[tool].makeMark) {
+            SelectMark(-1);  // A drawing tool is for new marks.
+        }
         pen_.tool = tool;
         InvalidateToolbox();
         PenChanged();
@@ -2668,9 +3200,11 @@ private:
 
     void SetColor(ARGB color) {
         pen_.color = color;
-        if (typing_) {
-            annotations_.back().color = color;
-            InvalidateClient(AnnotationBounds(annotations_.back()));
+        if (selected_ >= 0 && marks_[selected_]->color != color) {
+            Mark& mark = *marks_[selected_];
+            BeforeChange(Change::Restyle, selected_);
+            mark.color = color;
+            InvalidateClient(mark.Bounds());
         }
         InvalidateToolbox();
         PenChanged();
@@ -2682,12 +3216,13 @@ private:
             return;
         }
         pen_.thickness = thickness;
-        if (typing_) {
-            Annotation& text = annotations_.back();
-            RECT before = AnnotationBounds(text);
-            text.size = TextSizeFor(thickness, Scale());
+        if (selected_ >= 0 && marks_[selected_]->thickness != thickness) {
+            Mark& mark = *marks_[selected_];
+            BeforeChange(Change::Restyle, selected_);
+            RECT before = mark.Bounds();
+            mark.thickness = thickness;
             InvalidateClient(before);
-            InvalidateClient(AnnotationBounds(text));
+            InvalidateClient(mark.Bounds());
         }
         InvalidateToolbox();
         PenChanged();
@@ -2715,14 +3250,8 @@ private:
 
     void Activate(const ToolboxItem& item) {
         switch (item.item) {
-            case Item::Arrow:
-                SetTool(Tool::Arrow);
-                break;
-            case Item::Box:
-                SetTool(Tool::Box);
-                break;
-            case Item::Text:
-                SetTool(Tool::Text);
+            case Item::Tool:
+                SetTool(item.index);
                 break;
             case Item::Swatch:
                 SetColor(kSwatches[item.index]);
@@ -2759,6 +3288,8 @@ private:
             return;
         }
         FinishTyping();
+        CancelDrawing();
+        EndMove();
         done_ = true;
         ReleaseMouse();
         KillTimer(hwnd_, kCaretTimer);
@@ -2781,18 +3312,24 @@ private:
     // inside its top edge. It stays on the selection's display.
     void LayOutToolbox() {
         toolbox_.clear();
+        separators_.clear();
         int padding = Px(6);
         int button = Px(36);
         int swatch = Px(30);
         int separator = Px(17);
-        std::vector<std::pair<Item, int>> widths;
-        auto add = [&](Item item, int width) { widths.emplace_back(item, width); };
-        add(Item::Arrow, button);
-        add(Item::Box, button);
-        add(Item::Text, button);
+        struct Slot {
+            Item item;
+            int index;
+            int width;
+        };
+        std::vector<Slot> slots;
+        auto add = [&](Item item, int width, int index = 0) { slots.push_back({item, index, width}); };
+        for (int i = 0; i < kToolCount; i++) {
+            add(Item::Tool, button, i);
+        }
         add(Item::None, separator);
         for (int i = 0; i < kSwatchCount; i++) {
-            add(Item::Swatch, swatch);
+            add(Item::Swatch, swatch, i);
         }
         add(Item::CustomColor, swatch);
         add(Item::None, separator);
@@ -2805,8 +3342,8 @@ private:
         add(Item::Save, button);
         add(Item::Close, button);
         int width = padding * 2;
-        for (const auto& [item, itemWidth] : widths) {
-            width += itemWidth;
+        for (const Slot& slot : slots) {
+            width += slot.width;
         }
         int height = padding * 2 + button;
 
@@ -2826,14 +3363,13 @@ private:
         toolboxRect_ = {left, top, left + width, top + height};
 
         int x = left + padding;
-        int swatchIndex = 0;
-        for (const auto& [item, itemWidth] : widths) {
-            if (item != Item::None) {
-                toolbox_.push_back({item, item == Item::Swatch ? swatchIndex++ : 0, {x, top + padding, x + itemWidth, top + padding + button}});
+        for (const Slot& slot : slots) {
+            if (slot.item != Item::None) {
+                toolbox_.push_back({slot.item, slot.index, {x, top + padding, x + slot.width, top + padding + button}});
             } else {
-                separators_.push_back(x + itemWidth / 2);
+                separators_.push_back(x + slot.width / 2);
             }
-            x += itemWidth;
+            x += slot.width;
         }
     }
 
@@ -2865,12 +3401,8 @@ private:
 
     std::wstring TooltipFor(const ToolboxItem& item) const {
         switch (item.item) {
-            case Item::Arrow:
-                return L"Arrow (A)";
-            case Item::Box:
-                return L"Box (B)";
-            case Item::Text:
-                return L"Text (T)";
+            case Item::Tool:
+                return std::wstring(kTools[item.index].name) + L" (" + kTools[item.index].key + L")";
             case Item::Swatch:
                 return kSwatchNames[item.index];
             case Item::CustomColor:
@@ -2899,14 +3431,23 @@ private:
         if (mode_ == Mode::Selecting) {
             return IDC_CROSS;
         }
+        const Tool& tool = kTools[pen_.tool];
         if (drawing_) {
-            return IDC_CROSS;
+            return tool.cursor;
+        }
+        if (moving_ >= 0) {
+            return IDC_SIZEALL;
         }
         if (ItemAt(point).item != Item::None) {
             return IDC_HAND;
         }
         if (PtInRect(&selection_, point)) {
-            return pen_.tool == Tool::Text ? IDC_IBEAM : IDC_CROSS;
+            int mark = MarkAt(point);
+            if (mark >= 0) {
+                // Text can be clicked to type into with the text tool, and dragged to move it.
+                return tool.typed && marks_[mark]->Text() ? IDC_IBEAM : IDC_SIZEALL;
+            }
+            return tool.cursor;
         }
         return IDC_ARROW;  // Clicking out here finishes.
     }
@@ -2968,12 +3509,17 @@ private:
             graphics.SetTextRenderingHint(gp::TextRenderingHintAntiAliasGridFit);
             if (!IsRectEmpty(&bright)) {
                 graphics.SetClip(ToRectF(bright));
-                for (const Annotation& annotation : annotations_) {
-                    bool caret = typing_ && &annotation == &annotations_.back() && caretOn_;
-                    DrawAnnotation(graphics, annotation, caret);
+                for (size_t i = 0; i < marks_.size(); i++) {
+                    marks_[i]->Draw(graphics, typing_ && (int)i == selected_ && caretOn_);
                 }
                 if (drawing_) {
-                    DrawAnnotation(graphics, *drawing_);
+                    drawing_->Draw(graphics, false);
+                }
+                if (hoverMark_ >= 0 && hoverMark_ != selected_) {
+                    DrawMarkFrame(graphics, *marks_[hoverMark_], false);
+                }
+                if (selected_ >= 0) {
+                    DrawMarkFrame(graphics, *marks_[selected_], true);
                 }
                 graphics.ResetClip();
                 DrawSelectionFrame(graphics, bright);
@@ -2992,6 +3538,26 @@ private:
         SelectObject(buffer, previous);
         DeleteObject(bitmap);
         DeleteDC(buffer);
+    }
+
+    // A dashed outline around the selected mark, or a faint one around the mark under the mouse.
+    void DrawMarkFrame(gp::Graphics& graphics, const Mark& mark, bool selected) {
+        float scale = Scale();
+        gp::RectF frame = mark.Outline();
+        float spread = mark.Width() / 2 + 4 * scale;
+        frame.Inflate(spread, spread);
+        if (!selected) {
+            gp::Pen pen(WithAlpha(150, kSelectionColor), std::max(1.0f, scale));
+            graphics.DrawRectangle(&pen, frame);
+            return;
+        }
+        // Dashes over a white line, to show on light and dark pictures alike.
+        gp::Pen under(Argb(220, 255, 255, 255), 1.5f * scale);
+        graphics.DrawRectangle(&under, frame);
+        gp::Pen pen(Argb(255, 0, 120, 212), 1.5f * scale);
+        const gp::REAL dashes[] = {3, 2};  // In pen widths.
+        pen.SetDashPattern(dashes, ARRAYSIZE(dashes));
+        graphics.DrawRectangle(&pen, frame);
     }
 
     // A crisp line just outside the selection with a soft glow around it.
@@ -3056,8 +3622,7 @@ private:
             gp::RectF rect = ToRectF(item.rect);
             bool hovered = item.item == hoverItem_.item && item.index == hoverItem_.index && item.item != Item::Thickness;
             bool pressed = hovered && item.item == pressedItem_.item && item.index == pressedItem_.index;
-            bool active = (item.item == Item::Arrow && pen_.tool == Tool::Arrow) || (item.item == Item::Box && pen_.tool == Tool::Box) ||
-                          (item.item == Item::Text && pen_.tool == Tool::Text);
+            bool active = item.item == Item::Tool && item.index == pen_.tool;
             gp::RectF button = rect;
             button.Inflate(-2 * scale, -2 * scale);
             if (active) {
@@ -3066,24 +3631,13 @@ private:
                 FillRoundedRect(graphics, pressed ? colors.pressed : colors.hover, button, 4 * scale);
             }
             gp::Color ink = active ? colors.accent : colors.foreground;
-            if (item.item == Item::Undo && annotations_.empty()) {
+            if (item.item == Item::Undo && history_.empty()) {
                 ink = WithAlpha(90, colors.foreground);
             }
             gp::RectF icon(rect.X + (rect.Width - 18 * scale) / 2, rect.Y + (rect.Height - 18 * scale) / 2, 18 * scale, 18 * scale);
             switch (item.item) {
-                case Item::Arrow:
-                    DrawArrow(graphics, gp::PointF(icon.X + 1 * scale, icon.GetBottom() - 1 * scale),
-                              gp::PointF(icon.GetRight() - 1 * scale, icon.Y + 1 * scale), ink, 1.6f * scale);
-                    break;
-                case Item::Box: {
-                    gp::Pen pen(ink, 1.6f * scale);
-                    gp::RectF square = icon;
-                    square.Inflate(-2 * scale, -3 * scale);
-                    graphics.DrawRectangle(&pen, square);
-                    break;
-                }
-                case Item::Text:
-                    DrawGlyph(graphics, kGlyphText, 16 * scale, rect, ink);
+                case Item::Tool:
+                    kTools[item.index].drawIcon(graphics, icon, ink, scale);
                     break;
                 case Item::Swatch:
                 case Item::CustomColor: {
@@ -3162,9 +3716,21 @@ private:
     POINT anchor_{};
     POINT current_{};
     bool dragging_ = false;
-    std::vector<Annotation> annotations_;
-    std::optional<Annotation> drawing_;
-    bool typing_ = false;  // The last annotation is text being typed.
+    MarkList marks_;
+    std::vector<MarkList> history_;  // The marks before each change, for undo.
+    Change lastChange_ = Change::Other;
+    int lastChangeMark_ = -1;
+    std::unique_ptr<Mark> drawing_;  // The mark being drawn, until the mouse is let go.
+    int selected_ = -1;              // The selected mark, in marks_.
+    int hoverMark_ = -1;             // The mark under the mouse.
+    int moving_ = -1;                // The mark being dragged.
+    bool pressedSelected_ = false;   // It was selected already when the mouse was pressed on it.
+    POINT movePressed_{};
+    gp::PointF moveLast_;
+    bool moved_ = false;
+    bool typing_ = false;  // The selected mark is text being typed.
+    bool typingNew_ = false;
+    bool typingChanged_ = false;
     bool caretOn_ = false;
     float scale_ = 1;  // Of the selection's display.
     std::vector<ToolboxItem> toolbox_;
@@ -3190,7 +3756,10 @@ class SnipApp {
 public:
     bool Start() {
         settings_ = ModSettings::Load();
-        pen_.tool = (Tool)std::clamp(Storage::GetInt(L"Tool", (int)pen_.tool), 0, 2);
+        int tool = ToolForKey((wchar_t)Storage::GetInt(L"Tool", kDefaultToolKey));
+        if (tool >= 0) {
+            pen_.tool = tool;
+        }
         pen_.color = (ARGB)Storage::GetInt(L"Color", (int)pen_.color);
         pen_.thickness = std::clamp(Storage::GetInt(L"Thickness", pen_.thickness), kMinThickness, kMaxThickness);
         if (!messages_.Create(L"TaskbarSnipper.Mod.Messages") || !notice_.Create()) {
@@ -3288,7 +3857,7 @@ private:
     void OnOverlayDone(std::optional<Finish> finish) {
         // The overlay is deleted once its window has finished with this message.
         PostMessageW(messages_.Handle(), kOverlayClosedMessage, 0, 0);
-        Storage::SetInt(L"Tool", (int)pen_.tool);
+        Storage::SetInt(L"Tool", kTools[pen_.tool].key);  // By its shortcut, which stays the same as tools are added.
         Storage::SetInt(L"Color", (int)pen_.color);
         Storage::SetInt(L"Thickness", pen_.thickness);
         if (!finish) {
@@ -3296,7 +3865,7 @@ private:
         }
         RECT selection = overlay_->SelectionInOverlay();
         RECT onScreen = overlay_->SelectionOnScreen();
-        std::unique_ptr<gp::Bitmap> image = ComposeScreenshot(overlay_->Screen(), selection, overlay_->Annotations());
+        std::unique_ptr<gp::Bitmap> image = ComposeScreenshot(overlay_->Screen(), selection, overlay_->Marks());
         if (!image) {
             notice_.Show(L"Couldn't make the screenshot", L"Windows ran out of memory for it.", L"", nullptr, onScreen);
             return;
