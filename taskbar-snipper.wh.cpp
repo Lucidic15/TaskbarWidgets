@@ -78,8 +78,8 @@ Explorer.
 
 The screenshot and record buttons sit on the taskbar like the Windows weather widget: click one to
 take a screenshot or record, right-click them for their menu, and drag them to move them along the
-taskbar. Turn them off with **Buttons on the taskbar**, or just the record button with **Record
-button**, in the mod's settings; the shortcuts work either way.
+taskbar. **Which buttons** in the mod's settings shows both, or just one of them, and **Buttons on
+the taskbar** turns them off; the shortcuts work either way.
 
 The menu opens the screenshots and recordings folders, and **Choose the screenshots folder…** and
 **Choose the recordings folder…** pick others. The folders can be set in the mod's settings too;
@@ -109,9 +109,13 @@ moves them all; **Move this widget left** and **right** change their order.
 - showButton: true
   $name: Buttons on the taskbar
   $description: Screenshot and record buttons on the taskbar. Right-click them to choose the folders to save in, or to link them with the Taskbar Audio Flipper and Taskbar RDP Launcher widgets.
-- recordButton: true
-  $name: Record button
-  $description: A record button next to the screenshot button, to record part of the screen as a video.
+- buttons: both
+  $name: Which buttons
+  $description: The screenshot button, the record button, or both. Their shortcuts work either way.
+  $options:
+  - both: Screenshot and record
+  - screenshot: Screenshot only
+  - record: Record only
 - recordShortcut: true
   $name: Win+Shift+R records the screen
   $description: Takes over Windows' screen recording shortcut (the Snipping Tool's), to record with Taskbar Snipper instead.
@@ -332,6 +336,7 @@ struct SaveFolder {
 
 struct ModSettings {
     bool showButton = true;
+    bool screenshotButton = true;  // At least one of the two.
     bool recordButton = true;
     bool recordShortcut = true;
     AfterCapture afterCapture = AfterCapture::Both;
@@ -341,7 +346,10 @@ struct ModSettings {
     static ModSettings Load() {
         ModSettings settings;
         settings.showButton = Wh_GetIntSetting(L"showButton") != 0;
-        settings.recordButton = Wh_GetIntSetting(L"recordButton") != 0;
+        PCWSTR buttons = Wh_GetStringSetting(L"buttons");
+        settings.screenshotButton = wcscmp(buttons, L"record") != 0;
+        settings.recordButton = wcscmp(buttons, L"screenshot") != 0;
+        Wh_FreeStringSetting(buttons);
         settings.recordShortcut = Wh_GetIntSetting(L"recordShortcut") != 0;
         PCWSTR after = Wh_GetStringSetting(L"afterCapture");
         if (wcscmp(after, L"copy") == 0) {
@@ -567,7 +575,7 @@ struct Palette {
 
 // The glow around the selection.
 const gp::Color kSelectionColor = Argb(255, 76, 194, 255);
-// Recording.
+// The line around an area being recorded.
 const gp::Color kRecordRed = Argb(255, 232, 17, 35);
 
 // ---------------------------------------------------------------------------
@@ -1618,12 +1626,12 @@ void DrawScreenshotIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::
     graphics.DrawLine(&pen, middleX, middleY - arm, middleX, middleY + arm);
 }
 
-// A record icon: a ring with a red dot in it; while recording, a red stop square.
+// A record icon: a ring with a dot in it; while recording, a stop square.
 void DrawRecordIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, bool recording) {
     if (recording) {
         gp::RectF square = box;
         square.Inflate(-box.Width * 0.2f, -box.Height * 0.2f);
-        FillRoundedRect(graphics, kRecordRed, square, box.Width * 0.1f);
+        FillRoundedRect(graphics, color, square, box.Width * 0.1f);
         return;
     }
     float stroke = std::max(1.25f, box.Width * 0.08f);
@@ -1633,8 +1641,8 @@ void DrawRecordIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Colo
     graphics.DrawEllipse(&pen, ring);
     gp::RectF dot = box;
     dot.Inflate(-box.Width * 0.27f, -box.Height * 0.27f);
-    gp::SolidBrush red(kRecordRed);
-    graphics.FillEllipse(&red, dot);
+    gp::SolidBrush brush(color);
+    graphics.FillEllipse(&brush, dot);
 }
 
 class SnipperWidget : public TaskbarWidget {
@@ -1643,10 +1651,14 @@ public:
     std::function<void()> onRecord;
     std::function<void()> onMenu;
 
-    // Shows the record button next to the screenshot button, or not.
-    void SetRecordButton(bool shown) {
-        if (shown != recordButton_) {
-            recordButton_ = shown;
+    // Which buttons show: one or both (with neither asked for, both).
+    void SetButtons(bool screenshot, bool record) {
+        if (!screenshot && !record) {
+            screenshot = record = true;
+        }
+        if (screenshot != screenshotButton_ || record != recordButton_) {
+            screenshotButton_ = screenshot;
+            recordButton_ = record;
             hovered_ = -1;
             ContentChanged();
         }
@@ -1682,10 +1694,10 @@ protected:
             }
             float size = (float)Px(20);
             gp::RectF icon(left + (buttonWidth - size) / 2, (height - size) / 2, size, size);
-            if (button == 0) {
-                DrawScreenshotIcon(graphics, icon, foreground);
-            } else {
+            if (IsRecordButton(button)) {
                 DrawRecordIcon(graphics, icon, foreground, recording_);
+            } else {
+                DrawScreenshotIcon(graphics, icon, foreground);
             }
         }
     }
@@ -1711,7 +1723,7 @@ protected:
             // Not highlighted in the screenshot or recording.
             hovered_ = -1;
             Render();
-            auto action = clicked == 0 ? onSnip : onRecord;
+            auto action = IsRecordButton(clicked) ? onRecord : onSnip;
             if (action) {
                 action();
             }
@@ -1721,10 +1733,13 @@ protected:
     }
 
 private:
-    int ButtonCount() const { return recordButton_ ? 2 : 1; }
-    int ButtonWidth() const { return Px(recordButton_ ? 40 : 44); }
-    int ButtonAt(POINT point) const { return recordButton_ && point.x >= ButtonWidth() ? 1 : 0; }
+    int ButtonCount() const { return screenshotButton_ && recordButton_ ? 2 : 1; }
+    int ButtonWidth() const { return Px(ButtonCount() == 2 ? 40 : 44); }
+    int ButtonAt(POINT point) const { return ButtonCount() == 2 && point.x >= ButtonWidth() ? 1 : 0; }
+    // The screenshot button comes first when both show.
+    bool IsRecordButton(int button) const { return !screenshotButton_ || button == 1; }
 
+    bool screenshotButton_ = true;
     bool recordButton_ = true;
     bool recording_ = false;
     int hovered_ = -1;  // The button under the mouse.
@@ -4649,10 +4664,10 @@ private:
                     DrawGlyph(graphics, kGlyphClose, 13 * scale, rect, ink);
                     break;
                 case Item::Record: {
-                    // A red dot, and what it does.
+                    // A dot, and what it does.
                     float diameter = 12 * scale;
-                    gp::SolidBrush red(kRecordRed);
-                    graphics.FillEllipse(&red, rect.X + 14 * scale, rect.Y + (rect.Height - diameter) / 2, diameter, diameter);
+                    gp::SolidBrush dot(ink);
+                    graphics.FillEllipse(&dot, rect.X + 14 * scale, rect.Y + (rect.Height - diameter) / 2, diameter, diameter);
                     gp::Font font(L"Segoe UI Semibold", 13.0f * scale, gp::FontStyleRegular, gp::UnitPixel);
                     DrawTextLine(graphics, L"Start recording", font, ink,
                                  gp::RectF(rect.X + 34 * scale, rect.Y, rect.Width - 38 * scale, rect.Height));
@@ -5016,8 +5031,8 @@ private:
         } else {
             // A blinking dot, and the time so far.
             if (GetTickCount64() / 500 % 2 == 0) {
-                gp::SolidBrush red(kRecordRed);
-                graphics.FillEllipse(&red, (float)Px(15), height / 2 - Px(5), (float)Px(10), (float)Px(10));
+                gp::SolidBrush dot(colors.foreground);
+                graphics.FillEllipse(&dot, (float)Px(15), height / 2 - Px(5), (float)Px(10), (float)Px(10));
             }
             DrawTextLine(graphics, FormatClock(elapsed ? elapsed() : 0), font, colors.foreground,
                          gp::RectF((float)Px(34), 0, (float)Px(72), height));
@@ -5032,7 +5047,7 @@ private:
             }
             if (button == Button::Stop) {
                 float side = 12 * scale_;
-                FillRoundedRect(graphics, kRecordRed,
+                FillRoundedRect(graphics, colors.foreground,
                                 gp::RectF(rect.X + (rect.Width - side) / 2, rect.Y + (rect.Height - side) / 2, side, side), 2 * scale_);
             } else {
                 DrawGlyph(graphics, kGlyphClose, 12 * scale_, rect, colors.foreground);
@@ -6118,7 +6133,7 @@ public:
         messages_.onMessage = [this](UINT message, WPARAM wParam, LPARAM lParam) { OnMessage(message, lParam); };
         // The buttons' window is there even while it's hidden, so the other widgets still see it,
         // and it still hears about changes to the Windows settings.
-        widget_.SetRecordButton(settings_.recordButton);
+        widget_.SetButtons(settings_.screenshotButton, settings_.recordButton);
         if (!widget_.Create(Storage::GetInt(L"TaskbarOffset", -1))) {
             return false;
         }
@@ -6158,7 +6173,7 @@ private:
                 break;
             case kSettingsChangedMessage:
                 settings_ = ModSettings::Load();
-                widget_.SetRecordButton(settings_.recordButton);
+                widget_.SetButtons(settings_.screenshotButton, settings_.recordButton);
                 widget_.SetShown(settings_.showButton);
                 hook_.SetRecordShortcut(settings_.recordShortcut);
                 break;
