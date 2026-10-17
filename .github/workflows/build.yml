@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get LLVM MinGW's Clang
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          install: mingw-w64-clang-x86_64-toolchain
+      - name: Build the apps
+        shell: pwsh
+        run: python tools/build.py --compiler "${{ steps.msys2.outputs.msys2-location }}\clang64\bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TaskbarWidgets
+          path: build/*.exe

@@ -1,0 +1,32 @@
+name: Release
+
+# Pushing a tag like v2.0.0 builds the apps and publishes them, with the mods, as a release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get LLVM MinGW's Clang
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: false
+          install: mingw-w64-clang-x86_64-toolchain
+      - name: Build the apps
+        shell: pwsh
+        run: python tools/build.py --compiler "${{ steps.msys2.outputs.msys2-location }}\clang64\bin"
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $files = @(Get-ChildItem build/*.exe) + @(Get-ChildItem mods/*.wh.cpp) | ForEach-Object { $_.FullName }
+          gh release create "${{ github.ref_name }}" @files --title "Taskbar Widgets ${{ github.ref_name }}" --generate-notes

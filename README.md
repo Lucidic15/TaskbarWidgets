@@ -1,164 +1,99 @@
-# AudioFlipper
+# Taskbar Widgets
 
-A small Windows 11 app for switching audio devices from the taskbar. It adds a widget to the
-taskbar, in the same style as the Windows weather widget, with up to three sections that you can
-each show or hide:
+Three small widgets for the Windows 11 taskbar, in the style of the Windows weather widget. Each one
+is a [Windhawk](https://windhawk.net) mod, and the same code builds into a standalone app, for
+running it without Windhawk.
 
-- **Output**: the active output device's icon, name and volume. Click it to switch to the next
-  output you have enabled (speakers → headset → monitor → …).
-- **Input**: the same for your microphone.
-- **Webcam**: the chosen webcam's name and whether it's on, with a camera icon that turns it on and
-  off (see below).
+| Widget | What it does | App |
+| --- | --- | --- |
+| **Taskbar Audio Flipper** | Switches between your speakers, headsets and microphones with a click, and turns a webcam on and off | `AudioFlipper.exe` |
+| **Taskbar RDP Launcher** | Starts Remote Desktop full screen on the number of displays you pick | `RDPLauncher.exe` |
+| **Taskbar Snipper** | Print Screen selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save | `TaskbarSnipper.exe` |
 
-![The widget on the taskbar, with its Output, Input and Webcam sections](docs/screenshot.png)
+Linked, they sit side by side as one: right-click any of them, open **Link widgets**, and choose
+**Link with** another. Dragging any of them moves them all, and a widget that hides leaves no gap.
+Linking works between the mods and the apps alike.
 
-**On the Output and Input sections:**
+## Taskbar Audio Flipper
 
-- **Hover**: a flyout opens above it with the device's name, a volume slider, and the device icon
-  as a mute button, like the Windows 11 volume flyout. It closes as soon as the mouse leaves it.
-- **Left-click**: switch to the next device.
-- **Scroll**: turn the volume (or microphone level) up or down.
-- **Middle-click**: mute / unmute.
+![The widget on the taskbar, with its Output, Input and Webcam sections](docs/audio-flipper.png)
 
-After you change the output volume (when you let go of the slider, or stop scrolling), AudioFlipper
-plays the Windows "Default Beep" ding at the new level, like Windows' own volume slider, so you can
-hear whether it's right. Turn it off with **Output → Ding when changing volume**.
+- **Output** and **Input** show the device in use, with its volume. Click to switch to the next one,
+  scroll to change the volume, middle-click to mute, and hover for a volume flyout like Windows'
+  own.
+- **Webcam** shows the chosen webcam and whether it's on. Click its camera to turn it on or off.
+- **Right-click** for each section's settings: which devices take turns, a device to pick directly,
+  icon style, and the links to Windows' settings.
 
-Anywhere on the widget, **right-click** for the menu and **drag** left or right to move it along the
-taskbar. It remembers where you put it.
+## Taskbar RDP Launcher
 
-AudioFlipper also has a notification-area (tray) icon for the output, showing the active device's
-icon, with the same clicks.
+![The widget on the taskbar, with a computer and buttons for 1, 2 and 3 displays](docs/rdp-launcher.png)
 
-The right-click menu has an **Output**, an **Input** and a **Webcam** submenu. Each has a **Show on
-taskbar** switch for its section of the widget, and the settings for it: picking a device directly,
-which devices are in the click rotation, whether to switch the communications device too, and links
-to the Windows settings. **Start with Windows** and **Exit** are at the bottom. With all three
-sections turned off the widget is hidden and only the tray icon remains.
+- **Click 1, 2 or 3** to connect full screen on that many displays. Hover a number for a map of your
+  displays, and click them to choose which ones that button uses.
+- **Click the computer** (or scroll over it) for the next of your computers. Add them by name, from
+  a saved .rdp file, or from Remote Desktop Connection's recent list, in the right-click menu.
 
-## Device names and icons
+## Taskbar Snipper
 
-AudioFlipper shows each device with the name and icon it has in the Windows Sound control panel,
-the same ones you see on its **Playback** and **Recording** tabs.
+- **Print Screen**, or the screenshot button, freezes the screen to select an area or a window. A
+  toolbox above it draws with a pencil, lines, arrows, boxes and text in any color and thickness;
+  anything drawn can be dragged, restyled or deleted. Click outside the selection to copy the
+  screenshot, save it, or both.
+- **Win+Shift+R**, or the record button, records an area as an MP4 video. When you stop, a window
+  plays it back to trim its start and end, then copies or saves it.
+- **Settings**: which buttons show, the folders to save in (or choose them from the right-click
+  menu), and whether Win+Shift+R is taken over from the Snipping Tool.
 
-To change them, choose **Rename or change device icons…** from the **Output** or **Input** submenu.
-That opens the Sound control panel on the matching tab: right-click a device, choose
-**Properties**, then type a new name or click **Change Icon**. AudioFlipper picks up the change
-within a second.
+Each mod's full description is its readme, at the top of its file in [mods](mods).
 
-## Webcam on/off
+## Getting them
 
-AudioFlipper can also turn a webcam on and off from the taskbar widget. Turn it on under
-**Webcam → Show on taskbar** in the right-click menu, and pick the webcam to control from the
-list in the same menu.
+### As Windhawk mods
 
-The widget then gets a webcam section on its right: a camera icon (with a slash through it while
-the webcam is off) and the webcam's name over **On** or **Off**. Click it to switch.
-**Webcam → Camera settings…** opens the camera page in Windows Settings.
+Taskbar Audio Flipper and Taskbar RDP Launcher are in Windhawk's mod catalog: in Windhawk, search
+for them under **Explore**. Taskbar Snipper isn't yet, and the files here can be newer than the
+catalog's. To install one from here: in Windhawk, click **Create a new mod**, replace the example
+with the file from [mods](mods), and click **Compile mod**, then **Exit editing mode**.
 
-Windows has no way to rename a webcam, but **Webcam → Rename…** gives it a name in AudioFlipper,
-shown on the widget and in the menu. Leave the name empty to go back to the webcam's own name. Each
-webcam keeps the name you give it.
+### As apps
 
-Turning the webcam off works like **Disable device** in Device Manager: no app can use it until it's
-turned back on. Windows only lets administrators do that, so by default each switch shows a Windows
-prompt asking to allow "PnP Utility" (Microsoft's `pnputil.exe`) to make changes.
+Download the apps from [Releases](../../releases), or build them (below). There's nothing to
+install: run one, and its widget appears on the taskbar. Its icon in the notification area has
+**Settings…** (Taskbar Snipper), **Start with Windows** and **Exit**.
 
-To stop the prompts, choose **Webcam → Switch without asking each time**. That asks once, and sets
-up two scheduled tasks ("AudioFlipper Webcam On" and "AudioFlipper Webcam Off") that run
-`pnputil.exe` from the Windows folder to turn that one webcam on or off. AudioFlipper starts them
-when you click the camera, with no prompt. They can't run anything else. Choosing the option again
-removes them (and asks once more). Picking a different webcam sets them up for that one.
+- An app keeps its settings in `%APPDATA%\TaskbarWidgets\<app>` and the rest in the registry, under
+  `HKEY_CURRENT_USER\Software\TaskbarWidgets\<app>`. Start it with `--log` to keep a log in
+  `%LOCALAPPDATA%\TaskbarWidgets\<app>`.
+- Use the app or the mod: an app won't start while the same widget runs in Windhawk.
+- **Coming from the old AudioFlipper or RDPLauncher app** (the C# one): exit it, then run the new
+  one. It takes on the old app's settings the first time it runs, and **Start with Windows** in its
+  menu takes the old app's place at startup.
 
-Webcams that are unplugged don't show on the widget.
+## Building
 
-## Linking with RDPLauncher
+The apps build with Python 3 and LLVM MinGW's Clang: Windhawk's own, found where Windhawk installs
+it, or any other given with `--compiler`.
 
-If you also run [RDPLauncher](https://github.com/Lucidic15/RDPLauncher) (1.1 or later), the two
-widgets can be joined into one: right-click either and choose **Link with RDPLauncher** (or **Link
-with AudioFlipper**) and which side it goes on. Linked, they sit side by side with a divider between
-them, dragging either moves both, and if one hides (or isn't running) the other takes its place.
-Choose **Not linked** to separate them again; each stays where it is.
+```
+python tools/build.py
+```
 
-The link is shared by the two apps, in `HKCU\Software\TaskbarWidgetLink`. Their Windhawk mods
-(below) link the same way, with each other or with the apps.
+The apps come out in `build`. To build one: `python tools/build.py taskbar-snipper`.
 
-## How the taskbar widget works
+## How it's put together
 
-Windows 11 has no supported way for apps to add their own widgets to the taskbar: the old taskbar
-toolbars ("deskbands") were removed, and the weather widget is built into Windows. So AudioFlipper's
-widget is a transparent, always-on-top window that sits on the taskbar and looks like part of it.
-It:
+- [mods](mods): the three Windhawk mods, each one C++ file. They're the only code for each widget.
+- [standalone](standalone): the host that runs a mod as an app. `windhawk_api.h` stands in for
+  Windhawk's API when a mod is built into an app, and `host.cpp` provides it: settings from the
+  app's settings file (with a settings window made from the mod's settings block), values in the
+  registry, and a log. It starts and stops the mod as Windhawk does.
+- [tools](tools): `build.py`, which also writes each app's icon, manifest and version into it, and
+  the scripts that drew the icons in [icons](icons).
 
-- keeps itself above the taskbar when you click the taskbar,
-- hides while a full-screen app (game, video, presentation) is in front, and when an auto-hiding
-  taskbar slides away,
-- appears on the main taskbar only (not the taskbars on other monitors).
+The widget code the three share (the taskbar window, menus, storage, and the link between them) is
+in each mod, since Windhawk mods are one file each: a change there belongs in all three.
 
-It starts just to the right of the weather widget. Drag it wherever you like; if you'd rather have
-it in the weather widget's spot, turn off **Widgets** under **Settings → Personalization →
-Taskbar** and drag it into the corner. It covers whatever taskbar space it's on, so keep it clear
-of taskbar buttons.
+## License
 
-Windows 11 tucks new tray icons into the `^` overflow menu. To show AudioFlipper's tray icon too,
-drag it out of the overflow menu, or turn it on under **Settings → Personalization → Taskbar →
-Other system tray icons**.
-
-## Getting it
-
-AudioFlipper targets .NET Framework 4.8, which is part of Windows 10 and 11, so there's nothing
-else to install.
-
-- **Download:** get `AudioFlipper.exe` from the latest release on the repository's
-  [Releases](https://github.com/Lucidic15/AudioFlipper/releases/latest) page. Put it somewhere it can stay (for example a folder in
-  Documents) and double-click it. Windows SmartScreen may warn about an unsigned app; choose
-  **More info → Run anyway**. Builds of every change are also on the **Actions** tab.
-- **Build it yourself:** install the [.NET SDK](https://dotnet.microsoft.com/download) and run
-
-  ```
-  dotnet build src/AudioFlipper/AudioFlipper.csproj -c Release
-  ```
-
-  The exe is written to `src/AudioFlipper/bin/Release/net48/AudioFlipper.exe`.
-- **As a Windhawk mod:** if you use [Windhawk](https://windhawk.net), the widget also comes as the
-  Taskbar Audio Flipper mod, which Windhawk runs with no exe. See [windhawk/](windhawk/README.md).
-
-Use **Start with Windows** in the right-click menu to launch it at sign-in, and **Exit** to close it.
-
-To publish a new release, set `<Version>` in `src/AudioFlipper/AudioFlipper.csproj` and add release
-notes as `.github/release-notes/v<version>.md`. Then on the **Actions** tab, choose **Release →
-Run workflow**, pick the branch and enter the version (or push a `v<version>` tag). The workflow
-builds the exe, creates the tag and publishes the release with the exe attached.
-
-## Which devices are in the rotation
-
-The rotation is every output (or input) that is enabled and connected (what Windows calls
-*active*), in alphabetical order. Devices that are disabled in Windows, or unplugged, are skipped
-automatically. To leave out a device you still want enabled (an HDMI monitor's speakers, or a
-webcam's built-in microphone, for example), untick it under **Include in click rotation** in the
-Output or Input submenu.
-
-By default switching also changes the *communications* device (used by Teams, Discord, etc.) so
-calls use the same device. Untick **Also switch communications device** in the Output or Input
-submenu to leave it alone.
-
-When the widget isn't showing the output (its section is turned off, or a full-screen app is in
-front), a small popup above the taskbar names the new output after each switch. Turn it off with
-**Output → Show popup on change**.
-
-## Command line
-
-`AudioFlipper.exe --next` switches to the next output and exits, without a tray icon;
-`AudioFlipper.exe --next-input` does the same for microphones. You can use them to get keyboard
-shortcuts: create a shortcut to `AudioFlipper.exe --next` on the desktop or in the Start menu, open
-its **Properties**, and set a **Shortcut key**. If AudioFlipper is running, its widget and icon
-update to show the new device.
-
-## How it works
-
-- Devices, their names and icons, and volume are read with the Windows Core Audio API
-  (`IMMDeviceEnumerator`, `IAudioEndpointVolume`).
-- Windows has no public API for changing the default output. AudioFlipper uses the undocumented
-  `IPolicyConfig` interface that the Sound control panel itself uses; it has been stable since
-  Windows 7 and is what other switchers such as EarTrumpet and SoundSwitch rely on.
-- Settings are stored in `%APPDATA%\AudioFlipper\settings.txt`.
+MIT.
