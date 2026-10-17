@@ -1,12 +1,12 @@
 // ==WindhawkMod==
 // @id              taskbar-snipper
 // @name            Taskbar Snipper
-// @description     Print Screen, or a button on the taskbar, selects part of the screen with a toolbox right above it to add arrows, boxes and text, then copies or saves it
+// @description     Print Screen, or a button on the taskbar, selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save
 // @version         1.0.0
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
 // @include         windhawk.exe
-// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -luuid -lcomdlg32 -lmsimg32
+// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -luuid -lcomdlg32 -lmsimg32 -lmfplat -lmfreadwrite -lmfuuid
 // @license         MIT
 // ==/WindhawkMod==
 
@@ -16,9 +16,12 @@
 
 Press **Print Screen**, or click the screenshot button on the taskbar, to select part of the
 screen. A toolbox opens right above the selection to mark it up with a pencil, lines, arrows, boxes
-and text, in any color and thickness. When you're done, click anywhere outside the selection (or press **Enter**),
-and the screenshot is copied to the clipboard, saved to a folder, or both, as you choose in the
-mod's settings.
+and text, in any color and thickness. When you're done, click anywhere outside the selection (or
+press **Enter**), and the screenshot is copied to the clipboard, saved to a folder, or both, as you
+choose in the mod's settings.
+
+Press **Win+Shift+R**, or click the record button, to record part of the screen as a video. When
+you stop, trim its start and end, then copy or save it.
 
 ## Selecting
 
@@ -36,6 +39,12 @@ mod's settings.
 - **Thickness**: **−** and **+**, or the mouse wheel. Text gets bigger with it too.
 - **Undo** (Ctrl+Z), **Copy** (Ctrl+C), **Save** (Ctrl+S) and **Close** (Esc).
 
+**Copy** and **Save** do just that. Clicking outside the selection or pressing Enter does what the
+**When you're done** setting says: copy, save, or both. Screenshots are saved as PNG files named by
+the date and time, in Windows' Screenshots folder (in Pictures) unless you choose another. A note
+in the corner of the screen says what happened; click it to show a saved screenshot in File
+Explorer.
+
 ## Moving and changing marks
 
 - Whatever tool is in hand, **drag** anything already drawn to move it; the pointer turns into a
@@ -47,38 +56,63 @@ mod's settings.
 - To change text, click it with the Text tool, or click it again once it's selected.
 - Undo takes back moves and changes too.
 
-**Copy** and **Save** do just that. Clicking outside the selection or pressing Enter does what the
-**When you're done** setting says: copy, save, or both. Screenshots are saved as PNG files named by
-the date and time, in the folder from the settings, or Windows' Screenshots folder (in Pictures).
-A note in the corner of the screen says what happened; click it to show a saved screenshot in File
-Explorer.
+## Recording the screen
 
-## The screenshot button
+- Press **Win+Shift+R**, click the record button, or choose **Record the screen** from the buttons'
+  menu. Select an area as for a screenshot, then click **Start recording** (or press **Enter**).
+  Recording starts after a 3-second countdown.
+- While recording, a red line marks the area and a bar beside it shows the time; neither is in the
+  video. To stop, click the **stop** square on the bar or the record button, or press
+  **Win+Shift+R** again. The bar's **X** throws the recording away.
+- The recording then opens to trim it. Drag the handles at either end of the strip of frames to cut
+  off its start and end, and click the strip to see any moment. **Space** plays the part kept, the
+  **arrow keys** step a frame at a time (a second with **Shift**), and **I** and **O** set the start
+  and end at the frame shown.
+- **Copy** (Ctrl+C) puts the video on the clipboard, to paste into a chat, an email or a folder.
+  **Save** (Ctrl+S) saves it in Windows' Screen Recordings folder (in Videos) unless you choose
+  another.
+- Recordings are MP4 videos (H.264, without sound) of up to 30 frames a second, with the mouse
+  pointer.
 
-The button sits on the taskbar like the Windows weather widget: click it to take a screenshot,
-right-click it for its menu, and drag it to move it along the taskbar. Turn it off with **Screenshot
-button on the taskbar** in the mod's settings; Print Screen works either way.
+## The buttons
+
+The screenshot and record buttons sit on the taskbar like the Windows weather widget: click one to
+take a screenshot or record, right-click them for their menu, and drag them to move them along the
+taskbar. Turn them off with **Buttons on the taskbar**, or just the record button with **Record
+button**, in the mod's settings; the shortcuts work either way.
+
+The menu opens the screenshots and recordings folders, and **Choose the screenshots folder…** and
+**Choose the recordings folder…** pick others. The folders can be set in the mod's settings too;
+whichever you changed last is used.
 
 With the Taskbar Audio Flipper or Taskbar RDP Launcher mod running too, their widgets can be joined
-with the button into one: right-click any of them, open **Link widgets**, and choose **Link with** the
-other. Linked, they sit side by side with a divider between them, and dragging any of them moves
-them all; **Move this widget left** and **right** change their order.
+with the buttons into one: right-click any of them, open **Link widgets**, and choose **Link with**
+the other. Linked, they sit side by side with a divider between them, and dragging any of them
+moves them all; **Move this widget left** and **right** change their order.
 
 ## Good to know
 
 - Only Print Screen on its own is taken over. Alt+Print Screen, Win+Print Screen and Win+Shift+S
-  work as usual, and turning the mod off gives Print Screen back to Windows.
+  work as usual, and turning the mod off gives Print Screen back to Windows. Win+Shift+R is taken
+  over while **Win+Shift+R records the screen** is on in the settings.
 - While a program running as administrator is in front, Windows doesn't let the mod see Print
-  Screen, so Windows handles it as usual.
+  Screen or Win+Shift+R, so Windows handles them as usual.
 - The tool, color and thickness you used last are remembered.
+- A recording closed without copying or saving it is deleted; the window asks first.
 */
 // ==/WindhawkModReadme==
 
 // ==WindhawkModSettings==
 /*
 - showButton: true
-  $name: Screenshot button on the taskbar
-  $description: A button on the taskbar that takes a screenshot, as Print Screen does. Right-click it to link it with the Taskbar Audio Flipper and Taskbar RDP Launcher widgets.
+  $name: Buttons on the taskbar
+  $description: Screenshot and record buttons on the taskbar. Right-click them to choose the folders to save in, or to link them with the Taskbar Audio Flipper and Taskbar RDP Launcher widgets.
+- recordButton: true
+  $name: Record button
+  $description: A record button next to the screenshot button, to record part of the screen as a video.
+- recordShortcut: true
+  $name: Win+Shift+R records the screen
+  $description: Takes over Windows' screen recording shortcut (the Snipping Tool's), to record with Taskbar Snipper instead.
 - afterCapture: both
   $name: When you're done
   $description: What clicking outside the selection, or pressing Enter, does with the screenshot. The toolbox's Copy and Save buttons do just one of them.
@@ -88,7 +122,10 @@ them all; **Move this widget left** and **right** change their order.
   - both: Copy it and save it
 - saveFolder: ""
   $name: Folder to save screenshots in
-  $description: Leave it empty for Windows' Screenshots folder, in Pictures. Environment variables like %USERPROFILE% work, and the folder is created if it isn't there.
+  $description: Leave it empty for Windows' Screenshots folder, in Pictures. Environment variables like %USERPROFILE% work, and the folder is created if it isn't there. The buttons' right-click menu can choose a folder too; whichever you changed last is used.
+- videoFolder: ""
+  $name: Folder to save recordings in
+  $description: Leave it empty for Windows' Screen Recordings folder, in Videos. Environment variables like %USERPROFILE% work, and the folder is created if it isn't there. The buttons' right-click menu can choose a folder too; whichever you changed last is used.
 */
 // ==/WindhawkModSettings==
 
@@ -100,6 +137,11 @@ them all; **Move this widget left** and **right** change their order.
 #include <dwmapi.h>
 #include <sddl.h>
 #include <commdlg.h>
+#include <codecapi.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfreadwrite.h>
+#include <mferror.h>
 #include <gdiplus.h>
 
 #include <algorithm>
@@ -180,8 +222,8 @@ std::wstring MenuText(const std::wstring& text) {
 }
 
 // ---------------------------------------------------------------------------
-// The mod's storage, for the tool, color and thickness used last. Windhawk keeps one for the whole
-// PC, while the mod runs separately for each signed-in Windows user, so each user's values are kept
+// The mod's storage, for the tool, color and thickness used last, and folders chosen from the
+// menu. Windhawk keeps one for the whole PC, while the mod runs separately for each signed-in Windows user, so each user's values are kept
 // apart under their SID.
 
 namespace Storage {
@@ -221,6 +263,20 @@ void SetInt(const wchar_t* name, int value) {
     Wh_SetIntValue(ValueName(name).c_str(), value);
 }
 
+std::wstring GetString(const wchar_t* name) {
+    WCHAR value[1024] = L"";
+    Wh_GetStringValue(ValueName(name).c_str(), value, ARRAYSIZE(value));
+    return value;
+}
+
+void SetString(const wchar_t* name, const std::wstring& value) {
+    Wh_SetStringValue(ValueName(name).c_str(), value.c_str());
+}
+
+void Delete(const wchar_t* name) {
+    Wh_DeleteValue(ValueName(name).c_str());
+}
+
 }  // namespace Storage
 
 // ---------------------------------------------------------------------------
@@ -228,24 +284,19 @@ void SetInt(const wchar_t* name, int value) {
 
 enum class AfterCapture { Copy, Save, Both };
 
-struct ModSettings {
-    bool showButton = true;
-    AfterCapture afterCapture = AfterCapture::Both;
-    std::wstring saveFolder;
+// A folder to save in: the one chosen from the buttons' menu, until its setting is changed; then
+// the setting's.
+struct SaveFolder {
+    std::wstring path;                 // The folder to use.
+    std::wstring setting;              // The setting, as typed: to tell when it changes.
+    const wchar_t* chosenValue = L"";  // Where the chosen folder is kept in the mod's storage.
 
-    static ModSettings Load() {
-        ModSettings settings;
-        settings.showButton = Wh_GetIntSetting(L"showButton") != 0;
-        PCWSTR after = Wh_GetStringSetting(L"afterCapture");
-        if (wcscmp(after, L"copy") == 0) {
-            settings.afterCapture = AfterCapture::Copy;
-        } else if (wcscmp(after, L"save") == 0) {
-            settings.afterCapture = AfterCapture::Save;
-        }
-        Wh_FreeStringSetting(after);
-        PCWSTR folder = Wh_GetStringSetting(L"saveFolder");
-        std::wstring path = Trim(folder);
-        Wh_FreeStringSetting(folder);
+    static SaveFolder Load(const wchar_t* settingName, const wchar_t* chosenValue, const std::wstring& fallback) {
+        SaveFolder folder;
+        folder.chosenValue = chosenValue;
+        PCWSTR value = Wh_GetStringSetting(settingName);
+        std::wstring path = Trim(value);
+        Wh_FreeStringSetting(value);
         // Quotes around a pasted path, and a backslash at the end, are fine.
         if (path.size() >= 2 && path.front() == L'"' && path.back() == L'"') {
             path = Trim(path.substr(1, path.size() - 2));
@@ -253,7 +304,52 @@ struct ModSettings {
         while (path.size() > 3 && (path.back() == L'\\' || path.back() == L'/')) {
             path.pop_back();
         }
-        settings.saveFolder = path.empty() ? KnownFolder(FOLDERID_Screenshots) : ExpandEnvironment(path);
+        folder.setting = path;
+        std::wstring chosen = Storage::GetString(chosenValue);
+        if (!chosen.empty() && Storage::GetString(SettingValue(chosenValue).c_str()) != path) {
+            // The setting was changed after the folder was chosen: the setting wins.
+            Storage::Delete(chosenValue);
+            Storage::Delete(SettingValue(chosenValue).c_str());
+            chosen.clear();
+        }
+        folder.path = !chosen.empty() ? chosen : !path.empty() ? ExpandEnvironment(path) : fallback;
+        return folder;
+    }
+
+    // Uses a folder chosen from the menu, until the setting is changed.
+    void Choose(const std::wstring& chosen) {
+        Storage::SetString(chosenValue, chosen);
+        Storage::SetString(SettingValue(chosenValue).c_str(), setting);
+        path = chosen;
+    }
+
+    // Where the setting is kept as it was when the folder was chosen.
+    static std::wstring SettingValue(const wchar_t* chosenValue) { return std::wstring(chosenValue) + L"Setting"; }
+};
+
+struct ModSettings {
+    bool showButton = true;
+    bool recordButton = true;
+    bool recordShortcut = true;
+    AfterCapture afterCapture = AfterCapture::Both;
+    SaveFolder screenshots;
+    SaveFolder recordings;
+
+    static ModSettings Load() {
+        ModSettings settings;
+        settings.showButton = Wh_GetIntSetting(L"showButton") != 0;
+        settings.recordButton = Wh_GetIntSetting(L"recordButton") != 0;
+        settings.recordShortcut = Wh_GetIntSetting(L"recordShortcut") != 0;
+        PCWSTR after = Wh_GetStringSetting(L"afterCapture");
+        if (wcscmp(after, L"copy") == 0) {
+            settings.afterCapture = AfterCapture::Copy;
+        } else if (wcscmp(after, L"save") == 0) {
+            settings.afterCapture = AfterCapture::Save;
+        }
+        Wh_FreeStringSetting(after);
+        settings.screenshots = SaveFolder::Load(L"saveFolder", L"ScreenshotFolder", KnownFolder(FOLDERID_Screenshots));
+        std::wstring videos = KnownFolder(FOLDERID_Videos);
+        settings.recordings = SaveFolder::Load(L"videoFolder", L"RecordingFolder", videos.empty() ? L"" : videos + L"\\Screen Recordings");
         return settings;
     }
 };
@@ -396,6 +492,8 @@ const wchar_t kGlyphUndo[] = {0xE7A7, 0};    // Undo
 const wchar_t kGlyphCopy[] = {0xE8C8, 0};    // Copy
 const wchar_t kGlyphSave[] = {0xE74E, 0};    // Save
 const wchar_t kGlyphClose[] = {0xE711, 0};   // Cancel
+const wchar_t kGlyphPlay[] = {0xE768, 0};    // Play
+const wchar_t kGlyphPause[] = {0xE769, 0};   // Pause
 
 // Draws an icon-font glyph at one font size, centered in the box by its ink.
 void DrawGlyph(gp::Graphics& graphics, const wchar_t* glyph, float emSize, const gp::RectF& box, const gp::Color& color) {
@@ -466,6 +564,8 @@ struct Palette {
 
 // The glow around the selection.
 const gp::Color kSelectionColor = Argb(255, 76, 194, 255);
+// Recording.
+const gp::Color kRecordRed = Argb(255, 232, 17, 35);
 
 // ---------------------------------------------------------------------------
 // Window classes
@@ -575,6 +675,8 @@ constexpr UINT kPrintScreenMessage = WM_APP + 1;
 constexpr UINT kEscapeMessage = WM_APP + 2;
 constexpr UINT kSettingsChangedMessage = WM_APP + 3;
 constexpr UINT kOverlayClosedMessage = WM_APP + 4;
+constexpr UINT kRecordMessage = WM_APP + 5;
+constexpr UINT kTrimClosedMessage = WM_APP + 6;  // lParam is the window.
 
 // ---------------------------------------------------------------------------
 // Taskbar
@@ -1481,8 +1583,9 @@ void AddLinkMenu(Menu& menu, TaskbarWidget& widget) {
 }
 
 // ---------------------------------------------------------------------------
-// The screenshot button on the taskbar: click it to take a screenshot (as Print Screen does),
-// right-click it for its menu, and drag it to move it along the taskbar.
+// The buttons on the taskbar: the screenshot button takes a screenshot (as Print Screen does), and
+// the record button records part of the screen, or stops recording. Right-click them for their
+// menu, and drag them to move them along the taskbar.
 
 // A screenshot icon: the corners of a frame, with a crosshair in the middle.
 void DrawScreenshotIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color) {
@@ -1512,10 +1615,49 @@ void DrawScreenshotIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::
     graphics.DrawLine(&pen, middleX, middleY - arm, middleX, middleY + arm);
 }
 
+// A record icon: a ring with a red dot in it; while recording, a red stop square.
+void DrawRecordIcon(gp::Graphics& graphics, const gp::RectF& box, const gp::Color& color, bool recording) {
+    if (recording) {
+        gp::RectF square = box;
+        square.Inflate(-box.Width * 0.2f, -box.Height * 0.2f);
+        FillRoundedRect(graphics, kRecordRed, square, box.Width * 0.1f);
+        return;
+    }
+    float stroke = std::max(1.25f, box.Width * 0.08f);
+    gp::Pen pen(color, stroke);
+    gp::RectF ring = box;
+    ring.Inflate(-stroke / 2, -stroke / 2);
+    graphics.DrawEllipse(&pen, ring);
+    gp::RectF dot = box;
+    dot.Inflate(-box.Width * 0.27f, -box.Height * 0.27f);
+    gp::SolidBrush red(kRecordRed);
+    graphics.FillEllipse(&red, dot);
+}
+
 class SnipperWidget : public TaskbarWidget {
 public:
     std::function<void()> onSnip;
+    std::function<void()> onRecord;
     std::function<void()> onMenu;
+
+    // Shows the record button next to the screenshot button, or not.
+    void SetRecordButton(bool shown) {
+        if (shown != recordButton_) {
+            recordButton_ = shown;
+            hovered_ = -1;
+            ContentChanged();
+        }
+    }
+
+    // While recording, the record button shows a stop square.
+    void SetRecording(bool recording) {
+        if (recording != recording_) {
+            recording_ = recording;
+            if (Handle()) {
+                Render();
+            }
+        }
+    }
 
 protected:
     int DefaultOffset(int barWidth, int width) override {
@@ -1524,50 +1666,70 @@ protected:
         return barWidth - width - Px(400);
     }
 
-    int LayOut() override { return Px(44); }
+    int LayOut() override { return ButtonWidth() * ButtonCount(); }
 
     void Draw(gp::Graphics& graphics, int width, int height, bool light) override {
         gp::Color foreground = light ? Argb(255, 28, 28, 28) : Argb(255, 255, 255, 255);
-        if (hovered_ && !Dragging()) {
-            FillRoundedRect(graphics, WithAlpha(light ? 18 : 24, foreground),
-                            gp::RectF((float)Px(2), (float)Px(4), (float)(width - Px(4)), (float)(height - Px(8))), (float)Px(4));
+        int buttonWidth = width / ButtonCount();
+        for (int button = 0; button < ButtonCount(); button++) {
+            float left = (float)(button * buttonWidth);
+            if (button == hovered_ && !Dragging()) {
+                FillRoundedRect(graphics, WithAlpha(light ? 18 : 24, foreground),
+                                gp::RectF(left + Px(2), (float)Px(4), (float)(buttonWidth - Px(4)), (float)(height - Px(8))), (float)Px(4));
+            }
+            float size = (float)Px(20);
+            gp::RectF icon(left + (buttonWidth - size) / 2, (height - size) / 2, size, size);
+            if (button == 0) {
+                DrawScreenshotIcon(graphics, icon, foreground);
+            } else {
+                DrawRecordIcon(graphics, icon, foreground, recording_);
+            }
         }
-        float size = (float)Px(20);
-        DrawScreenshotIcon(graphics, gp::RectF((width - size) / 2, (height - size) / 2, size, size), foreground);
     }
 
     void OnHover(POINT point) override {
-        if (!hovered_) {
-            hovered_ = true;
+        int button = ButtonAt(point);
+        if (button != hovered_) {
+            hovered_ = button;
             Render();
         }
     }
 
     void OnHoverLeave() override {
-        if (hovered_) {
-            hovered_ = false;
+        if (hovered_ >= 0) {
+            hovered_ = -1;
             Render();
         }
     }
 
     void OnClick(POINT point, MouseButton button) override {
-        if (button == MouseButton::Left && onSnip) {
-            // Not highlighted in the screenshot.
-            hovered_ = false;
+        if (button == MouseButton::Left) {
+            int clicked = ButtonAt(point);
+            // Not highlighted in the screenshot or recording.
+            hovered_ = -1;
             Render();
-            onSnip();
+            auto action = clicked == 0 ? onSnip : onRecord;
+            if (action) {
+                action();
+            }
         } else if (button == MouseButton::Right && onMenu) {
             onMenu();
         }
     }
 
 private:
-    bool hovered_ = false;
+    int ButtonCount() const { return recordButton_ ? 2 : 1; }
+    int ButtonWidth() const { return Px(recordButton_ ? 40 : 44); }
+    int ButtonAt(POINT point) const { return recordButton_ && point.x >= ButtonWidth() ? 1 : 0; }
+
+    bool recordButton_ = true;
+    bool recording_ = false;
+    int hovered_ = -1;  // The button under the mouse.
 };
 
 // ---------------------------------------------------------------------------
-// The keyboard hook: catches Print Screen (on its own, without Alt, Ctrl, Shift or Win) before
-// Windows acts on it, and tells the app. It runs on a thread of its own, so a busy UI thread never
+// The keyboard hook: catches Print Screen (on its own, without Alt, Ctrl, Shift or Win), and
+// Win+Shift+R when the setting is on, before Windows acts on them, and tells the app. It runs on a thread of its own, so a busy UI thread never
 // holds up typing. While the overlay is open but another window is in front (before the first
 // click on the overlay), it also catches Esc, which would otherwise go to that window.
 
@@ -1602,6 +1764,7 @@ public:
     ~KeyboardHook() { Stop(); }
 
     void SetOverlayOpen(bool open) { overlayOpen_ = open; }
+    void SetRecordShortcut(bool on) { recordShortcut_ = on; }
 
 private:
     static DWORD WINAPI ThreadProc(void* parameter) {
@@ -1624,6 +1787,17 @@ private:
     }
 
     static bool IsDown(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+
+    // Presses an unassigned key, so letting go of Win after a shortcut taken over doesn't open Start.
+    static void MaskWinKey() {
+        INPUT inputs[2] = {};
+        for (INPUT& input : inputs) {
+            input.type = INPUT_KEYBOARD;
+            input.ki.wVk = 0xE8;
+        }
+        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(2, inputs, sizeof(INPUT));
+    }
 
     static bool OwnWindowInFront() {
         DWORD processId = 0;
@@ -1652,6 +1826,21 @@ private:
                     self->printScreenHeld_ = false;
                     return 1;
                 }
+            } else if (key->vkCode == 'R' && self->recordShortcut_) {
+                if (down) {
+                    bool win = IsDown(VK_LWIN) || IsDown(VK_RWIN);
+                    if (win && IsDown(VK_SHIFT) && !IsDown(VK_CONTROL) && !IsDown(VK_MENU)) {
+                        if (!self->recordHeld_) {
+                            self->recordHeld_ = true;
+                            PostMessageW(self->notify_, kRecordMessage, 0, 0);
+                            MaskWinKey();
+                        }
+                        return 1;
+                    }
+                } else if (self->recordHeld_) {
+                    self->recordHeld_ = false;
+                    return 1;
+                }
             } else if (key->vkCode == VK_ESCAPE && down && self->overlayOpen_ && !OwnWindowInFront()) {
                 PostMessageW(self->notify_, kEscapeMessage, 0, 0);
                 return 1;
@@ -1667,6 +1856,8 @@ private:
     DWORD threadId_ = 0;
     bool hooked_ = false;
     bool printScreenHeld_ = false;  // Only used on the hook's thread.
+    bool recordHeld_ = false;       // Likewise.
+    std::atomic<bool> recordShortcut_{false};
     std::atomic<bool> overlayOpen_{false};
 };
 
@@ -2358,6 +2549,649 @@ void ShowInExplorer(const std::wstring& path) {
 }
 
 // ---------------------------------------------------------------------------
+// Video files: screen recordings are MP4 files (H.264 video, no sound), written and read with
+// Windows' Media Foundation a frame at a time. Frames are 32-bit pixels (blue, green, red and an
+// unused byte), top row first.
+
+constexpr LONGLONG kTicksPerSecond = 10'000'000;  // Media Foundation's times are in 100 ns ticks.
+constexpr int kRecordingFps = 30;
+
+// A COM interface pointer, released when it goes.
+template <typename T>
+class Com {
+public:
+    Com() = default;
+    ~Com() { Reset(); }
+    Com(const Com&) = delete;
+    Com& operator=(const Com&) = delete;
+
+    T* operator->() const { return pointer_; }
+    T* Get() const { return pointer_; }
+    explicit operator bool() const { return pointer_ != nullptr; }
+
+    // For functions that hand back an interface.
+    T** Put() {
+        Reset();
+        return &pointer_;
+    }
+
+    void Reset() {
+        if (pointer_) {
+            pointer_->Release();
+            pointer_ = nullptr;
+        }
+    }
+
+private:
+    T* pointer_ = nullptr;
+};
+
+// Media Foundation, started for as long as this is kept. Starts and stops nest.
+class MediaFoundation {
+public:
+    MediaFoundation() : started_(SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET))) {}
+    ~MediaFoundation() {
+        if (started_) {
+            MFShutdown();
+        }
+    }
+    MediaFoundation(const MediaFoundation&) = delete;
+    MediaFoundation& operator=(const MediaFoundation&) = delete;
+
+    bool Started() const { return started_; }
+
+private:
+    bool started_;
+};
+
+// COM for a worker thread, for as long as this is kept.
+class ComThread {
+public:
+    ComThread() : initialized_(SUCCEEDED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) {}
+    ~ComThread() {
+        if (initialized_) {
+            CoUninitialize();
+        }
+    }
+    ComThread(const ComThread&) = delete;
+    ComThread& operator=(const ComThread&) = delete;
+
+private:
+    bool initialized_;
+};
+
+// The size a video of an area of the screen is recorded at: the same, unless it's more than the
+// encoder takes (bigger than 4K), and a whole number of pixel pairs, as H.264 needs.
+SIZE VideoSizeFor(int width, int height) {
+    double shrink = std::min({1.0, std::sqrt(3840.0 * 2160.0 / ((double)width * height)), 4096.0 / width, 4096.0 / height});
+    return {std::max(2, (int)(width * shrink) & ~1), std::max(2, (int)(height * shrink) & ~1)};
+}
+
+// Writes a video file, frame by frame.
+class VideoWriter {
+public:
+    // Starts the file. The width and height must be even.
+    bool Open(const std::wstring& path, int width, int height) {
+        width_ = width;
+        height_ = height;
+        Com<IMFAttributes> attributes;
+        if (FAILED(MFCreateAttributes(attributes.Put(), 1)) ||
+            FAILED(attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4)) ||
+            FAILED(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.Get(), writer_.Put()))) {
+            return false;
+        }
+        // About 0.1 bits a pixel: sharp text, with room for scrolling and video.
+        double bitrate = std::clamp((double)width * height * kRecordingFps * 0.1, 2e6, 24e6);
+        Com<IMFMediaType> output;
+        if (FAILED(MFCreateMediaType(output.Put())) || FAILED(output->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
+            FAILED(output->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264)) || FAILED(output->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate)) ||
+            FAILED(output->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive)) ||
+            FAILED(output->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High)) ||
+            // A key frame every second, so trimming finds any frame quickly.
+            FAILED(output->SetUINT32(MF_MT_MAX_KEYFRAME_SPACING, kRecordingFps)) ||
+            FAILED(MFSetAttributeSize(output.Get(), MF_MT_FRAME_SIZE, width, height)) ||
+            FAILED(MFSetAttributeRatio(output.Get(), MF_MT_FRAME_RATE, kRecordingFps, 1)) ||
+            FAILED(MFSetAttributeRatio(output.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1)) ||
+            FAILED(writer_->AddStream(output.Get(), &stream_))) {
+            return false;
+        }
+        Com<IMFMediaType> input;
+        if (FAILED(MFCreateMediaType(input.Put())) || FAILED(input->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
+            FAILED(input->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
+            FAILED(input->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive)) ||
+            FAILED(input->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(width * 4))) ||  // Positive: top row first.
+            FAILED(MFSetAttributeSize(input.Get(), MF_MT_FRAME_SIZE, width, height)) ||
+            FAILED(MFSetAttributeRatio(input.Get(), MF_MT_FRAME_RATE, kRecordingFps, 1)) ||
+            FAILED(MFSetAttributeRatio(input.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1)) ||
+            FAILED(writer_->SetInputMediaType(stream_, input.Get(), nullptr)) || FAILED(writer_->BeginWriting())) {
+            return false;
+        }
+        return true;
+    }
+
+    // Adds a frame of width × height pixels, shown from the time (in ticks from the start).
+    bool Write(const BYTE* pixels, LONGLONG time) {
+        DWORD size = (DWORD)width_ * height_ * 4;
+        Com<IMFMediaBuffer> buffer;
+        BYTE* data = nullptr;
+        if (FAILED(MFCreateMemoryBuffer(size, buffer.Put())) || FAILED(buffer->Lock(&data, nullptr, nullptr))) {
+            return false;
+        }
+        memcpy(data, pixels, size);
+        buffer->Unlock();
+        Com<IMFSample> sample;
+        return SUCCEEDED(buffer->SetCurrentLength(size)) && SUCCEEDED(MFCreateSample(sample.Put())) &&
+               SUCCEEDED(sample->AddBuffer(buffer.Get())) && SUCCEEDED(sample->SetSampleTime(time)) &&
+               SUCCEEDED(sample->SetSampleDuration(kTicksPerSecond / kRecordingFps)) &&
+               SUCCEEDED(writer_->WriteSample(stream_, sample.Get()));
+    }
+
+    // Finishes the file. Returns whether it was all written.
+    bool Finish() {
+        bool finished = writer_ && SUCCEEDED(writer_->Finalize());
+        writer_.Reset();
+        return finished;
+    }
+
+private:
+    Com<IMFSinkWriter> writer_;
+    DWORD stream_ = 0;
+    int width_ = 0;
+    int height_ = 0;
+};
+
+// Reads a video file, frame by frame.
+class VideoReader {
+public:
+    bool Open(const std::wstring& path) {
+        Com<IMFAttributes> attributes;
+        if (FAILED(MFCreateAttributes(attributes.Put(), 1)) ||
+            FAILED(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE)) ||  // Converts to RGB.
+            FAILED(MFCreateSourceReaderFromURL(path.c_str(), attributes.Get(), reader_.Put()))) {
+            return false;
+        }
+        reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+        Com<IMFMediaType> type;
+        if (FAILED(MFCreateMediaType(type.Put())) || FAILED(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
+            FAILED(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
+            FAILED(reader_->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get())) ||
+            !ReadFormat()) {
+            return false;
+        }
+        PROPVARIANT duration;
+        PropVariantInit(&duration);
+        if (SUCCEEDED(reader_->GetPresentationAttribute((DWORD)MF_SOURCE_READER_MEDIASOURCE, MF_PD_DURATION, &duration))) {
+            duration_ = (LONGLONG)duration.uhVal.QuadPart;
+        }
+        PropVariantClear(&duration);
+        // Times count from the first frame. The encoder's reordered (B) frames can put it a frame or
+        // two in.
+        std::vector<BYTE> first;
+        LONGLONG time = 0;
+        if (duration_ <= 0 || !Read(first, time)) {
+            return false;
+        }
+        origin_ = time;
+        return Seek(0);
+    }
+
+    void Close() { reader_.Reset(); }
+
+    int Width() const { return width_; }
+    int Height() const { return height_; }
+    LONGLONG Duration() const { return duration_; }
+
+    // Goes back or ahead to the key frame at or before the time; reading goes on from there.
+    bool Seek(LONGLONG time) {
+        PROPVARIANT position;
+        PropVariantInit(&position);
+        position.vt = VT_I8;
+        position.hVal.QuadPart = std::max<LONGLONG>(0, time) + origin_;
+        return SUCCEEDED(reader_->SetCurrentPosition(GUID_NULL, position));
+    }
+
+    // Reads the next frame into the pixels (Width() × Height()), with the time it shows from.
+    // False at the end of the video, or if it can't be read.
+    bool Read(std::vector<BYTE>& pixels, LONGLONG& time) {
+        while (true) {
+            DWORD flags = 0;
+            LONGLONG timestamp = 0;
+            Com<IMFSample> sample;
+            if (FAILED(reader_->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, &flags, &timestamp, sample.Put())) ||
+                (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM))) {
+                return false;
+            }
+            if ((flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) && !ReadFormat()) {
+                return false;
+            }
+            if (!sample) {
+                continue;  // A gap in the stream.
+            }
+            time = timestamp - origin_;
+            return CopyFrame(sample.Get(), pixels);
+        }
+    }
+
+private:
+    // The frames' size, and where the picture is in them: decoded frames can be rounded up to a
+    // whole number of 16-pixel blocks, with the picture in their top-left.
+    bool ReadFormat() {
+        Com<IMFMediaType> type;
+        UINT32 width = 0;
+        UINT32 height = 0;
+        if (FAILED(reader_->GetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, type.Put())) ||
+            FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height)) || width == 0 || height == 0) {
+            return false;
+        }
+        frameWidth_ = (int)width;
+        frameHeight_ = (int)height;
+        left_ = 0;
+        top_ = 0;
+        width_ = frameWidth_;
+        height_ = frameHeight_;
+        MFVideoArea area;
+        for (const GUID& aperture : {MF_MT_MINIMUM_DISPLAY_APERTURE, MF_MT_GEOMETRIC_APERTURE}) {
+            if (SUCCEEDED(type->GetBlob(aperture, (UINT8*)&area, sizeof(area), nullptr)) && area.Area.cx > 0 && area.Area.cy > 0) {
+                left_ = std::clamp((int)area.OffsetX.value, 0, frameWidth_ - 1);
+                top_ = std::clamp((int)area.OffsetY.value, 0, frameHeight_ - 1);
+                width_ = std::min((int)area.Area.cx, frameWidth_ - left_);
+                height_ = std::min((int)area.Area.cy, frameHeight_ - top_);
+                break;
+            }
+        }
+        UINT32 stride = 0;
+        stride_ = SUCCEEDED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride)) ? (LONG)(INT32)stride : frameWidth_ * 4;
+        return true;
+    }
+
+    bool CopyFrame(IMFSample* sample, std::vector<BYTE>& pixels) {
+        Com<IMFMediaBuffer> buffer;
+        if (FAILED(sample->ConvertToContiguousBuffer(buffer.Put()))) {
+            return false;
+        }
+        pixels.resize((size_t)width_ * height_ * 4);
+        auto copy = [&](const BYTE* firstRow, LONG pitch) {
+            for (int y = 0; y < height_; y++) {
+                memcpy(pixels.data() + (size_t)y * width_ * 4, firstRow + (LONG_PTR)(top_ + y) * pitch + left_ * 4, (size_t)width_ * 4);
+            }
+        };
+        Com<IMF2DBuffer> buffer2d;
+        BYTE* firstRow = nullptr;
+        LONG pitch = 0;
+        if (SUCCEEDED(buffer->QueryInterface(IID_PPV_ARGS(buffer2d.Put()))) && SUCCEEDED(buffer2d->Lock2D(&firstRow, &pitch))) {
+            copy(firstRow, pitch);
+            buffer2d->Unlock2D();
+            return true;
+        }
+        BYTE* data = nullptr;
+        DWORD length = 0;
+        if (FAILED(buffer->Lock(&data, nullptr, &length))) {
+            return false;
+        }
+        bool fits = (DWORD)(std::abs(stride_) * frameHeight_) <= length;
+        if (fits) {
+            // A negative stride means the bottom row comes first.
+            copy(stride_ < 0 ? data + (size_t)(frameHeight_ - 1) * -stride_ : data, stride_);
+        }
+        buffer->Unlock();
+        return fits;
+    }
+
+    Com<IMFSourceReader> reader_;
+    LONGLONG duration_ = 0;
+    LONGLONG origin_ = 0;  // The first frame's time in the file.
+    int frameWidth_ = 0;
+    int frameHeight_ = 0;
+    LONG stride_ = 0;
+    int left_ = 0;
+    int top_ = 0;
+    int width_ = 0;
+    int height_ = 0;
+};
+
+// Copies the part of a video from start to end (in ticks) to a new file, starting at 0. Frames
+// are re-encoded, so the cut is exact. progress (0 to 1) is called for each frame, and stops the
+// copy by returning false.
+bool CopyVideoPart(const std::wstring& source, const std::wstring& target, LONGLONG start, LONGLONG end,
+                   const std::function<bool(double progress)>& progress) {
+    VideoReader reader;
+    VideoWriter writer;
+    if (!reader.Open(source) || !writer.Open(target, reader.Width() & ~1, reader.Height() & ~1) || !reader.Seek(start)) {
+        writer.Finish();
+        return false;
+    }
+    std::vector<BYTE> pixels;
+    std::vector<BYTE> even;
+    LONGLONG time = 0;
+    LONGLONG half = kTicksPerSecond / kRecordingFps / 2;
+    int width = reader.Width() & ~1;
+    int height = reader.Height() & ~1;
+    bool wrote = false;
+    while (reader.Read(pixels, time)) {
+        if (time < start - half) {
+            continue;  // Before the start, from the key frame before it.
+        }
+        if (time >= end - half) {
+            break;
+        }
+        const BYTE* frame = pixels.data();
+        if (width != reader.Width() || height != reader.Height()) {
+            even.resize((size_t)width * height * 4);
+            for (int y = 0; y < height; y++) {
+                memcpy(even.data() + (size_t)y * width * 4, pixels.data() + (size_t)y * reader.Width() * 4, (size_t)width * 4);
+            }
+            frame = even.data();
+        }
+        if (!writer.Write(frame, std::max<LONGLONG>(0, time - start))) {
+            writer.Finish();
+            return false;
+        }
+        wrote = true;
+        if (progress && !progress(std::clamp((double)(time - start) / std::max<LONGLONG>(1, end - start), 0.0, 1.0))) {
+            writer.Finish();
+            return false;
+        }
+    }
+    return writer.Finish() && wrote;
+}
+
+// Records into a video file on a thread of its own, from the time it's started until it's
+// stopped. The frame source draws each frame, 30 times a second (fewer if the computer can't keep
+// up; frames keep their real times, so the video plays at the right speed either way).
+class Recorder {
+public:
+    // Draws a frame of the video's size into the device context.
+    using FrameSource = std::function<void(HDC dc, int width, int height)>;
+
+    ~Recorder() { Stop(); }
+
+    // Starts recording. Returns once the file is started, false if it couldn't be.
+    bool Start(const std::wstring& path, SIZE size, FrameSource source) {
+        Stop();
+        path_ = path;
+        size_ = size;
+        source_ = std::move(source);
+        elapsed_ = 0;
+        failed_ = false;
+        started_ = false;
+        stop_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        ready_ = ready;
+        thread_ = CreateThread(nullptr, 0, ThreadProc, this, 0, nullptr);
+        if (thread_) {
+            WaitForSingleObject(ready, INFINITE);
+        }
+        CloseHandle(ready);
+        ready_ = nullptr;
+        if (!started_) {
+            Stop();
+        }
+        return started_;
+    }
+
+    // Stops, and finishes the file. Returns whether it all went well.
+    bool Stop() {
+        if (!thread_) {
+            return false;
+        }
+        SetEvent(stop_);
+        WaitForSingleObject(thread_, INFINITE);
+        CloseHandle(thread_);
+        CloseHandle(stop_);
+        thread_ = nullptr;
+        stop_ = nullptr;
+        return started_ && !failed_;
+    }
+
+    bool Recording() const { return thread_ != nullptr; }
+    // How long the recording is so far, in ticks.
+    LONGLONG Elapsed() const { return elapsed_; }
+    // Something went wrong partway, and it stopped recording.
+    bool Failed() const { return failed_; }
+
+private:
+    static DWORD WINAPI ThreadProc(void* parameter) {
+        ((Recorder*)parameter)->Run();
+        return 0;
+    }
+
+    void Run() {
+        ComThread com;
+        MediaFoundation mediaFoundation;
+        VideoWriter writer;
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(info.bmiHeader);
+        info.bmiHeader.biWidth = size_.cx;
+        info.bmiHeader.biHeight = -size_.cy;  // Top row first.
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HDC screen = GetDC(nullptr);
+        HDC dc = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+        ReleaseDC(nullptr, screen);
+        HGDIOBJ previous = bitmap ? SelectObject(dc, bitmap) : nullptr;
+        // A precise timer where Windows has one (Windows 10 1803 and later).
+        HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (!timer) {
+            timer = CreateWaitableTimerW(nullptr, FALSE, nullptr);
+        }
+        started_ = mediaFoundation.Started() && bits && timer && writer.Open(path_, size_.cx, size_.cy);
+        SetEvent(ready_);
+        if (started_) {
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+            LARGE_INTEGER frequency;
+            LARGE_INTEGER origin;
+            QueryPerformanceFrequency(&frequency);
+            QueryPerformanceCounter(&origin);
+            auto now = [&]() {
+                LARGE_INTEGER counter;
+                QueryPerformanceCounter(&counter);
+                return (LONGLONG)((counter.QuadPart - origin.QuadPart) * (double)kTicksPerSecond / frequency.QuadPart);
+            };
+            const LONGLONG frameTicks = kTicksPerSecond / kRecordingFps;
+            while (true) {
+                LONGLONG time = now();
+                source_(dc, size_.cx, size_.cy);
+                GdiFlush();
+                if (!writer.Write((const BYTE*)bits, time)) {
+                    failed_ = true;
+                    break;
+                }
+                elapsed_ = time + frameTicks;
+                // The next frame's turn, skipping any that are already late.
+                LONGLONG next = (now() / frameTicks + 1) * frameTicks;
+                LARGE_INTEGER due;
+                due.QuadPart = -std::max<LONGLONG>(1, next - now());
+                SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE);
+                HANDLE handles[] = {stop_, timer};
+                if (WaitForMultipleObjects(2, handles, FALSE, INFINITE) == WAIT_OBJECT_0) {
+                    break;
+                }
+            }
+            if (!writer.Finish()) {
+                failed_ = true;
+            }
+        }
+        if (timer) {
+            CloseHandle(timer);
+        }
+        if (previous) {
+            SelectObject(dc, previous);
+        }
+        if (bitmap) {
+            DeleteObject(bitmap);
+        }
+        DeleteDC(dc);
+    }
+
+    std::wstring path_;
+    SIZE size_{};
+    FrameSource source_;
+    HANDLE thread_ = nullptr;
+    HANDLE stop_ = nullptr;
+    HANDLE ready_ = nullptr;
+    std::atomic<LONGLONG> elapsed_{0};
+    std::atomic<bool> failed_{false};
+    std::atomic<bool> started_{false};
+};
+
+// Draws the mouse pointer into a frame of part of the screen, as it is on screen right now.
+// scale is the frame's size over the area's.
+void DrawCursor(HDC dc, const RECT& area, double scale) {
+    CURSORINFO cursor{sizeof(cursor)};
+    if (!GetCursorInfo(&cursor) || !(cursor.flags & CURSOR_SHOWING) || !cursor.hCursor) {
+        return;
+    }
+    ICONINFO icon;
+    if (!GetIconInfo(cursor.hCursor, &icon)) {
+        return;
+    }
+    if (icon.hbmMask) {
+        DeleteObject(icon.hbmMask);
+    }
+    if (icon.hbmColor) {
+        DeleteObject(icon.hbmColor);
+    }
+    int x = (int)std::lround((cursor.ptScreenPos.x - area.left) * scale) - (int)icon.xHotspot;
+    int y = (int)std::lround((cursor.ptScreenPos.y - area.top) * scale) - (int)icon.yHotspot;
+    DrawIconEx(dc, x, y, cursor.hCursor, 0, 0, 0, nullptr, DI_NORMAL);
+}
+
+// The frame source for recording an area of the screen, with the mouse pointer.
+Recorder::FrameSource ScreenFrames(const RECT& area) {
+    return [area](HDC dc, int width, int height) {
+        int areaWidth = area.right - area.left;
+        int areaHeight = area.bottom - area.top;
+        HDC screen = GetDC(nullptr);
+        if (width == areaWidth && height == areaHeight) {
+            BitBlt(dc, 0, 0, width, height, screen, area.left, area.top, SRCCOPY);
+        } else {
+            SetStretchBltMode(dc, HALFTONE);
+            SetBrushOrgEx(dc, 0, 0, nullptr);
+            StretchBlt(dc, 0, 0, width, height, screen, area.left, area.top, areaWidth, areaHeight, SRCCOPY);
+        }
+        ReleaseDC(nullptr, screen);
+        DrawCursor(dc, area, (double)width / areaWidth);
+    };
+}
+
+// The folder for recordings being made and copies put on the clipboard: Taskbar Snipper in the
+// user's temporary files. Files older than a day there are cleaned up.
+std::wstring TemporaryFolder() {
+    WCHAR temp[MAX_PATH + 1];
+    DWORD length = GetTempPathW(ARRAYSIZE(temp), temp);
+    if (length == 0 || length > MAX_PATH) {
+        return L"";
+    }
+    std::wstring folder = std::wstring(temp) + L"Taskbar Snipper";
+    SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);
+    return folder;
+}
+
+void CleanUpTemporaryFolder() {
+    std::wstring folder = TemporaryFolder();
+    if (folder.empty()) {
+        return;
+    }
+    FILETIME now;
+    GetSystemTimeAsFileTime(&now);
+    ULONGLONG cutoff = (((ULONGLONG)now.dwHighDateTime << 32) | now.dwLowDateTime) - 24ULL * 3600 * kTicksPerSecond;
+    WIN32_FIND_DATAW found;
+    HANDLE search = FindFirstFileW((folder + L"\\*.mp4").c_str(), &found);
+    if (search == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    do {
+        ULONGLONG written = ((ULONGLONG)found.ftLastWriteTime.dwHighDateTime << 32) | found.ftLastWriteTime.dwLowDateTime;
+        if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && written < cutoff) {
+            DeleteFileW((folder + L"\\" + found.cFileName).c_str());
+        }
+    } while (FindNextFileW(search, &found));
+    FindClose(search);
+}
+
+// A new file name in the folder, "<prefix> <date> <time>.<extension>", numbered if it's taken.
+std::wstring NewFileName(const std::wstring& folder, const wchar_t* prefix, const wchar_t* extension) {
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    WCHAR name[96];
+    swprintf_s(name, L"%s %04d-%02d-%02d %02d%02d%02d", prefix, now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    std::wstring path = folder + L"\\" + name + extension;
+    for (int copy = 2; GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES && copy < 1000; copy++) {
+        path = folder + L"\\" + name + L" (" + std::to_wstring(copy) + L")" + extension;
+    }
+    return path;
+}
+
+// Puts a file on the clipboard, as File Explorer's Copy does, to paste into a chat, an email or a
+// folder.
+bool CopyFileToClipboard(HWND owner, const std::wstring& path) {
+    size_t size = sizeof(DROPFILES) + (path.size() + 2) * sizeof(wchar_t);
+    HGLOBAL files = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
+    if (!files) {
+        return false;
+    }
+    auto drop = (DROPFILES*)GlobalLock(files);
+    drop->pFiles = sizeof(DROPFILES);
+    drop->fWide = TRUE;
+    memcpy((BYTE*)drop + sizeof(DROPFILES), path.c_str(), path.size() * sizeof(wchar_t));  // Ends with two nulls.
+    GlobalUnlock(files);
+    DWORD effect = DROPEFFECT_COPY;
+    HGLOBAL dropEffect = GlobalCopy(&effect, sizeof(effect));
+    bool opened = false;
+    for (int attempt = 0; attempt < 10 && !(opened = OpenClipboard(owner)); attempt++) {
+        Sleep(20);
+    }
+    if (!opened) {
+        GlobalFree(files);
+        if (dropEffect) {
+            GlobalFree(dropEffect);
+        }
+        return false;
+    }
+    EmptyClipboard();
+    bool ok = SetClipboardData(CF_HDROP, files) != nullptr;
+    if (!ok) {
+        GlobalFree(files);
+    }
+    if (dropEffect && !SetClipboardData(RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT), dropEffect)) {
+        GlobalFree(dropEffect);
+    }
+    CloseClipboard();
+    return ok;
+}
+
+// Lets the user pick a folder. Returns it, or nothing if they cancelled.
+std::optional<std::wstring> PickFolder(HWND owner, const wchar_t* title, const std::wstring& current) {
+    Com<IFileOpenDialog> dialog;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(dialog.Put())))) {
+        return std::nullopt;
+    }
+    FILEOPENDIALOGOPTIONS options = 0;
+    dialog->GetOptions(&options);
+    dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+    dialog->SetTitle(title);
+    dialog->SetOkButtonLabel(L"Use this folder");
+    SHCreateDirectoryExW(nullptr, current.c_str(), nullptr);  // To start in it.
+    Com<IShellItem> start;
+    if (SUCCEEDED(SHCreateItemFromParsingName(current.c_str(), nullptr, IID_PPV_ARGS(start.Put())))) {
+        dialog->SetFolder(start.Get());
+    }
+    Com<IShellItem> chosen;
+    PWSTR path = nullptr;
+    if (FAILED(dialog->Show(owner)) || FAILED(dialog->GetResult(chosen.Put())) ||
+        FAILED(chosen->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
+        return std::nullopt;
+    }
+    std::wstring folder = path;
+    CoTaskMemFree(path);
+    return folder;
+}
+
+// ---------------------------------------------------------------------------
 // The note in the corner of the screen after a screenshot: a thumbnail, what happened, and where
 // it was saved. Clicking it shows a saved screenshot in File Explorer.
 
@@ -2489,8 +3323,8 @@ private:
 // The overlay: the frozen screen over every display, dimmed except for the selection, with the
 // toolbox above the selection once it's made.
 
-// What finishing does with the screenshot.
-enum class Finish { Default, Copy, Save };
+// What finishing does with the screenshot; or for a recording, start it.
+enum class Finish { Default, Copy, Save, Record };
 
 // The tool, color and thickness, remembered between screenshots.
 struct Pen {
@@ -2511,8 +3345,9 @@ public:
     // Called when the tool, color or thickness changes.
     std::function<void(const Pen& pen)> onPenChanged;
 
-    Overlay(std::unique_ptr<ScreenCopy> screen, std::vector<RECT> windows, const Pen& pen)
-        : screen_(std::move(screen)), pen_(pen) {
+    // forRecording selects an area to record: no marks, and the toolbox just starts recording.
+    Overlay(std::unique_ptr<ScreenCopy> screen, std::vector<RECT> windows, const Pen& pen, bool forRecording)
+        : screen_(std::move(screen)), pen_(pen), forRecording_(forRecording) {
         if (pen_.tool < 0 || pen_.tool >= kToolCount) {
             pen_.tool = ToolForKey(kDefaultToolKey);
         }
@@ -2623,7 +3458,7 @@ public:
                 }
                 return true;
             case WM_MOUSEWHEEL:
-                if (mode_ == Mode::Editing) {
+                if (mode_ == Mode::Editing && !forRecording_) {
                     wheelRemainder_ += GET_WHEEL_DELTA_WPARAM(wParam);
                     int notches = wheelRemainder_ / WHEEL_DELTA;
                     wheelRemainder_ -= notches * WHEEL_DELTA;
@@ -2669,6 +3504,7 @@ private:
         Copy,
         Save,
         Close,
+        Record,
     };
 
     struct ToolboxItem {
@@ -2757,7 +3593,7 @@ private:
         GetMonitorInfoW(MonitorFromPoint(onScreen, MONITOR_DEFAULTTONEAREST), &info);
         RECT monitor = ToClient(info.rcMonitor);
         float scale = ScaleForScreenRect(info.rcMonitor);
-        int width = (int)(470 * scale);
+        int width = (int)(540 * scale);
         int height = (int)(40 * scale);
         int left = (monitor.left + monitor.right - width) / 2;
         int top = monitor.top + (int)(24 * scale);
@@ -2825,6 +3661,18 @@ private:
         if (pressedItem_.item != Item::None) {
             return;
         }
+        if (forRecording_) {
+            // Selects again.
+            mode_ = Mode::Selecting;
+            hoverItem_ = {Item::None, 0, {}};
+            UpdateHover(point);
+            dragging_ = true;
+            anchor_ = point;
+            current_ = point;
+            selection_ = {point.x, point.y, point.x + 1, point.y + 1};
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        }
         if (!PtInRect(&selection_, point)) {
             pressedOutside_ = true;
             return;
@@ -2881,7 +3729,8 @@ private:
                 std::abs(point.y - anchor_.y) < GetSystemMetrics(SM_CYDRAG)) {
                 selection_ = hover_;
             }
-            if (selection_.right - selection_.left < 2 || selection_.bottom - selection_.top < 2) {
+            int smallest = forRecording_ ? 32 : 2;
+            if (selection_.right - selection_.left < smallest || selection_.bottom - selection_.top < smallest) {
                 selection_ = {};
                 InvalidateRect(hwnd_, nullptr, FALSE);
                 return;
@@ -2928,11 +3777,11 @@ private:
                 return;
             case VK_RETURN:
                 if (mode_ == Mode::Editing && (!typing_ || control)) {
-                    Done(Finish::Default);
+                    Done(forRecording_ ? Finish::Record : Finish::Default);
                 }
                 return;
         }
-        if (mode_ != Mode::Editing) {
+        if (mode_ != Mode::Editing || forRecording_) {
             return;
         }
         if (control) {
@@ -3277,6 +4126,9 @@ private:
             case Item::Close:
                 Done(std::nullopt);
                 break;
+            case Item::Record:
+                Done(Finish::Record);
+                break;
             case Item::Thickness:
             case Item::None:
                 break;
@@ -3324,23 +4176,28 @@ private:
         };
         std::vector<Slot> slots;
         auto add = [&](Item item, int width, int index = 0) { slots.push_back({item, index, width}); };
-        for (int i = 0; i < kToolCount; i++) {
-            add(Item::Tool, button, i);
+        if (forRecording_) {
+            add(Item::Record, Px(150));
+            add(Item::Close, button);
+        } else {
+            for (int i = 0; i < kToolCount; i++) {
+                add(Item::Tool, button, i);
+            }
+            add(Item::None, separator);
+            for (int i = 0; i < kSwatchCount; i++) {
+                add(Item::Swatch, swatch, i);
+            }
+            add(Item::CustomColor, swatch);
+            add(Item::None, separator);
+            add(Item::Thinner, button);
+            add(Item::Thickness, Px(52));
+            add(Item::Thicker, button);
+            add(Item::None, separator);
+            add(Item::Undo, button);
+            add(Item::Copy, button);
+            add(Item::Save, button);
+            add(Item::Close, button);
         }
-        add(Item::None, separator);
-        for (int i = 0; i < kSwatchCount; i++) {
-            add(Item::Swatch, swatch, i);
-        }
-        add(Item::CustomColor, swatch);
-        add(Item::None, separator);
-        add(Item::Thinner, button);
-        add(Item::Thickness, Px(52));
-        add(Item::Thicker, button);
-        add(Item::None, separator);
-        add(Item::Undo, button);
-        add(Item::Copy, button);
-        add(Item::Save, button);
-        add(Item::Close, button);
         int width = padding * 2;
         for (const Slot& slot : slots) {
             width += slot.width;
@@ -3421,6 +4278,8 @@ private:
                 return L"Save and close (Ctrl+S)";
             case Item::Close:
                 return L"Close (Esc)";
+            case Item::Record:
+                return L"Start recording (Enter)";
             case Item::None:
                 break;
         }
@@ -3440,6 +4299,9 @@ private:
         }
         if (ItemAt(point).item != Item::None) {
             return IDC_HAND;
+        }
+        if (forRecording_) {
+            return IDC_CROSS;  // Dragging selects again.
         }
         if (PtInRect(&selection_, point)) {
             int mark = MarkAt(point);
@@ -3596,7 +4458,10 @@ private:
         }
         float scale = (hintRect_.bottom - hintRect_.top) / 40.0f;
         gp::Font font(L"Segoe UI", 13.0f * scale, gp::FontStyleRegular, gp::UnitPixel);
-        DrawLabel(graphics, L"Drag to select an area, or click a window  ·  Esc to cancel", font, ToRectF(hintRect_), scale);
+        DrawLabel(graphics,
+                  forRecording_ ? L"Drag to select an area to record, or click a window  ·  Esc to cancel"
+                                : L"Drag to select an area, or click a window  ·  Esc to cancel",
+                  font, ToRectF(hintRect_), scale);
     }
 
     void DrawToolbox(gp::Graphics& graphics) {
@@ -3690,6 +4555,16 @@ private:
                 case Item::Close:
                     DrawGlyph(graphics, kGlyphClose, 13 * scale, rect, ink);
                     break;
+                case Item::Record: {
+                    // A red dot, and what it does.
+                    float diameter = 12 * scale;
+                    gp::SolidBrush red(kRecordRed);
+                    graphics.FillEllipse(&red, rect.X + 14 * scale, rect.Y + (rect.Height - diameter) / 2, diameter, diameter);
+                    gp::Font font(L"Segoe UI Semibold", 13.0f * scale, gp::FontStyleRegular, gp::UnitPixel);
+                    DrawTextLine(graphics, L"Start recording", font, ink,
+                                 gp::RectF(rect.X + 34 * scale, rect.Y, rect.Width - 38 * scale, rect.Height));
+                    break;
+                }
                 case Item::None:
                     break;
             }
@@ -3709,6 +4584,7 @@ private:
     std::unique_ptr<ScreenCopy> screen_;
     std::vector<RECT> windows_;
     Pen pen_;
+    bool forRecording_ = false;
     Mode mode_ = Mode::Selecting;
     RECT hover_{};
     RECT hintRect_{};
@@ -3749,8 +4625,1200 @@ private:
 };
 
 // ---------------------------------------------------------------------------
-// The app: waits for Print Screen or a click on the button, runs the overlay, and copies or saves
-// the screenshot.
+// While recording: a red line around the area, and a bar beside it with the time, a stop button
+// and a close button. Windows leaves both out of screen captures, so they're not in the recording.
+
+#ifndef WDA_EXCLUDEFROMCAPTURE
+#define WDA_EXCLUDEFROMCAPTURE 0x00000011
+#endif
+
+// A time as hours, minutes and seconds, without the hours when there are none: 1:05.
+std::wstring FormatClock(LONGLONG ticks) {
+    int seconds = (int)(std::max<LONGLONG>(0, ticks) / kTicksPerSecond);
+    WCHAR text[32];
+    if (seconds >= 3600) {
+        swprintf_s(text, L"%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60);
+    } else {
+        swprintf_s(text, L"%d:%02d", seconds / 60, seconds % 60);
+    }
+    return text;
+}
+
+// The red line just outside the area being recorded. Clicks go through it.
+class RecordingFrame {
+public:
+    ~RecordingFrame() { Hide(); }
+
+    void Show(const RECT& area, float scale) {
+        Hide();
+        int gap = std::max(1, (int)std::lround(2 * scale));
+        int line = std::max(2, (int)std::lround(2 * scale));
+        RECT outer = InflatedRect(area, gap + line);
+        int width = outer.right - outer.left;
+        int height = outer.bottom - outer.top;
+        if (const wchar_t* registered = RegisterForwardingClass<RecordingFrame>(L"TaskbarSnipper.Mod.RecordingFrame")) {
+            CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, registered, L"",
+                            WS_POPUP, outer.left, outer.top, width, height, nullptr, nullptr, ModuleInstance(), this);
+        }
+        if (!hwnd_) {
+            return;
+        }
+        SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(info.bmiHeader);
+        info.bmiHeader.biWidth = width;
+        info.bmiHeader.biHeight = -height;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        HDC screen = GetDC(nullptr);
+        HDC dc = CreateCompatibleDC(screen);
+        HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (bitmap && bits) {
+            // Clear, but for the line (opaque red, so premultiplying changes nothing).
+            auto pixels = (DWORD*)bits;
+            memset(pixels, 0, (size_t)width * height * 4);
+            const DWORD red = 0xFF000000 | ((DWORD)kRecordRed.GetR() << 16) | ((DWORD)kRecordRed.GetG() << 8) | kRecordRed.GetB();
+            for (int y = 0; y < height; y++) {
+                DWORD* row = pixels + (size_t)y * width;
+                if (y < line || y >= height - line) {
+                    std::fill(row, row + width, red);
+                } else {
+                    std::fill(row, row + line, red);
+                    std::fill(row + width - line, row + width, red);
+                }
+            }
+            HGDIOBJ previous = SelectObject(dc, bitmap);
+            POINT position{outer.left, outer.top};
+            SIZE size{width, height};
+            POINT origin{0, 0};
+            BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+            UpdateLayeredWindow(hwnd_, screen, &position, &size, dc, &origin, 0, &blend, ULW_ALPHA);
+            SelectObject(dc, previous);
+        }
+        if (bitmap) {
+            DeleteObject(bitmap);
+        }
+        DeleteDC(dc);
+        ReleaseDC(nullptr, screen);
+        ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
+    }
+
+    void Hide() {
+        if (hwnd_) {
+            DestroyWindow(hwnd_);
+        }
+    }
+
+    bool HandleMessage(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result) { return false; }
+
+    HWND hwnd_ = nullptr;
+};
+
+class RecordingBar {
+public:
+    // The countdown is over: start recording.
+    std::function<void()> onCountdownDone;
+    // The stop button: stop, and trim the recording.
+    std::function<void()> onStop;
+    // The close button: stop, and throw the recording away (or don't start it).
+    std::function<void()> onCancel;
+    // How long the recording is so far, and whether it failed.
+    std::function<LONGLONG()> elapsed;
+    std::function<bool()> failed;
+
+    ~RecordingBar() { Hide(); }
+
+    bool Shown() const { return hwnd_ != nullptr; }
+
+    // Shows the line around the area and the bar beside it, counting down from 3.
+    bool Show(const RECT& area) {
+        Hide();
+        scale_ = ScaleForScreenRect(area);
+        if (const wchar_t* registered = RegisterForwardingClass<RecordingBar>(L"TaskbarSnipper.Mod.RecordingBar")) {
+            CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, registered, L"Taskbar Snipper", WS_POPUP, 0, 0, 1, 1,
+                            nullptr, nullptr, ModuleInstance(), this);
+        }
+        if (!hwnd_) {
+            return false;
+        }
+        SetWindowDisplayAffinity(hwnd_, WDA_EXCLUDEFROMCAPTURE);
+        DWORD corners = DWMWCP_ROUND;
+        DwmSetWindowAttribute(hwnd_, DWMWA_WINDOW_CORNER_PREFERENCE, &corners, sizeof(corners));
+        counting_ = true;
+        countdownEnd_ = GetTickCount64() + 3000;
+        hover_ = Button::None;
+        pressed_ = Button::None;
+        RECT work = WorkAreaForScreenRect(area);
+        int width = Px(196);
+        int height = Px(44);
+        int gap = Px(8);
+        // Above the area, else below it, else inside its top edge (it's not recorded either way).
+        int left = std::clamp((int)(area.left + area.right - width) / 2, (int)work.left + gap,
+                              std::max((int)work.left + gap, (int)work.right - width - gap));
+        int top = area.top - gap - height;
+        if (top < work.top + gap) {
+            top = area.bottom + gap;
+            if (top + height > work.bottom - gap) {
+                top = std::max((int)work.top + gap, (int)area.top + gap);
+            }
+        }
+        SetWindowPos(hwnd_, HWND_TOPMOST, left, top, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        frame_.Show(area, scale_);
+        SetTimer(hwnd_, kTimer, 100, nullptr);
+        return true;
+    }
+
+    // Recording has started: the bar shows the time.
+    void StartedRecording() {
+        counting_ = false;
+        if (hwnd_) {
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
+    }
+
+    void Hide() {
+        frame_.Hide();
+        if (hwnd_) {
+            DestroyWindow(hwnd_);
+        }
+    }
+
+    bool HandleMessage(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result) {
+        switch (message) {
+            case WM_MOUSEACTIVATE:
+                result = MA_NOACTIVATE;  // The app being recorded keeps the keyboard.
+                return true;
+            case WM_ERASEBKGND:
+                result = 1;
+                return true;
+            case WM_PAINT:
+                Paint();
+                return true;
+            case WM_TIMER:
+                OnTimer();
+                return true;
+            case WM_SETCURSOR:
+                if (LOWORD(lParam) == HTCLIENT) {
+                    POINT cursor;
+                    GetCursorPos(&cursor);
+                    ScreenToClient(hwnd_, &cursor);
+                    SetCursor(LoadCursorW(nullptr, ButtonAt(cursor) != Button::None ? IDC_HAND : IDC_ARROW));
+                    result = TRUE;
+                    return true;
+                }
+                return false;
+            case WM_MOUSEMOVE: {
+                TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
+                TrackMouseEvent(&track);
+                SetHover(ButtonAt({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)}));
+                return true;
+            }
+            case WM_MOUSELEAVE:
+                SetHover(Button::None);
+                return true;
+            case WM_LBUTTONDOWN:
+                pressed_ = ButtonAt({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+                SetCapture(hwnd_);
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return true;
+            case WM_LBUTTONUP: {
+                Button pressed = pressed_;
+                pressed_ = Button::None;
+                if (GetCapture() == hwnd_) {
+                    ReleaseCapture();
+                }
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                if (pressed != Button::None && pressed == ButtonAt({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)})) {
+                    // Last: the bar may be gone after.
+                    auto action = pressed == Button::Stop ? onStop : onCancel;
+                    if (action) {
+                        action();
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    HWND hwnd_ = nullptr;
+
+private:
+    enum class Button { None, Stop, Close };
+
+    static constexpr UINT_PTR kTimer = 1;
+
+    int Px(float value) const { return (int)std::lround(value * scale_); }
+
+    RECT ButtonRect(Button button) const {
+        int left = button == Button::Stop ? Px(110) : Px(152);
+        return {left, Px(4), left + Px(36), Px(40)};
+    }
+
+    Button ButtonAt(POINT point) const {
+        for (Button button : {Button::Stop, Button::Close}) {
+            RECT rect = ButtonRect(button);
+            if (PtInRect(&rect, point) && !(button == Button::Stop && counting_)) {
+                return button;
+            }
+        }
+        return Button::None;
+    }
+
+    void SetHover(Button button) {
+        if (button != hover_) {
+            hover_ = button;
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
+    }
+
+    void OnTimer() {
+        if (counting_ && GetTickCount64() >= countdownEnd_) {
+            counting_ = false;
+            if (auto done = onCountdownDone) {
+                done();  // Last: the bar may be gone after.
+            }
+            return;
+        }
+        if (!counting_ && failed && failed()) {
+            if (auto stop = onStop) {
+                stop();
+            }
+            return;
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void Paint() {
+        PAINTSTRUCT paint;
+        HDC dc = BeginPaint(hwnd_, &paint);
+        RECT client;
+        GetClientRect(hwnd_, &client);
+        HDC memory = CreateCompatibleDC(dc);
+        HBITMAP bitmap = CreateCompatibleBitmap(dc, client.right, client.bottom);
+        HGDIOBJ previous = SelectObject(memory, bitmap);
+        PaintTo(memory, client);
+        BitBlt(dc, 0, 0, client.right, client.bottom, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, previous);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+        EndPaint(hwnd_, &paint);
+    }
+
+    // Draws the window's content into the device context.
+    void PaintTo(HDC memory, const RECT& client) {
+        Palette colors = Palette::Current();
+        gp::Graphics graphics(memory);
+        graphics.SetSmoothingMode(gp::SmoothingModeAntiAlias);
+        graphics.SetTextRenderingHint(gp::TextRenderingHintClearTypeGridFit);
+        graphics.Clear(WithAlpha(255, colors.background));
+        gp::Font font(L"Segoe UI Semibold", 14.0f * scale_, gp::FontStyleRegular, gp::UnitPixel);
+        float height = (float)client.bottom;
+        if (counting_) {
+            int seconds = (int)std::max<LONGLONG>(1, ((LONGLONG)countdownEnd_ - (LONGLONG)GetTickCount64() + 999) / 1000);
+            DrawTextLine(graphics, L"Recording in " + std::to_wstring(seconds), font, colors.foreground,
+                         gp::RectF((float)Px(16), 0, (float)Px(132), height));
+        } else {
+            // A blinking dot, and the time so far.
+            if (GetTickCount64() / 500 % 2 == 0) {
+                gp::SolidBrush red(kRecordRed);
+                graphics.FillEllipse(&red, (float)Px(15), height / 2 - Px(5), (float)Px(10), (float)Px(10));
+            }
+            DrawTextLine(graphics, FormatClock(elapsed ? elapsed() : 0), font, colors.foreground,
+                         gp::RectF((float)Px(34), 0, (float)Px(72), height));
+        }
+        for (Button button : {Button::Stop, Button::Close}) {
+            if (button == Button::Stop && counting_) {
+                continue;
+            }
+            gp::RectF rect = ToRectF(ButtonRect(button));
+            if (button == hover_ || button == pressed_) {
+                FillRoundedRect(graphics, button == pressed_ ? colors.pressed : colors.hover, rect, 4 * scale_);
+            }
+            if (button == Button::Stop) {
+                float side = 12 * scale_;
+                FillRoundedRect(graphics, kRecordRed,
+                                gp::RectF(rect.X + (rect.Width - side) / 2, rect.Y + (rect.Height - side) / 2, side, side), 2 * scale_);
+            } else {
+                DrawGlyph(graphics, kGlyphClose, 12 * scale_, rect, colors.foreground);
+            }
+        }
+        gp::Pen border(colors.border, 1);
+        graphics.DrawRectangle(&border, 0.5f, 0.5f, client.right - 1.0f, client.bottom - 1.0f);
+    }
+
+    RecordingFrame frame_;
+    float scale_ = 1;
+    bool counting_ = false;
+    ULONGLONG countdownEnd_ = 0;
+    Button hover_ = Button::None;
+    Button pressed_ = Button::None;
+};
+
+// ---------------------------------------------------------------------------
+// The trim window, after recording: plays the recording, trims its start and end with the handles
+// on the strip of frames under it, and copies or saves it.
+
+// A time as minutes, seconds and tenths: 1:05.3.
+std::wstring FormatTime(LONGLONG ticks) {
+    int tenths = (int)(std::max<LONGLONG>(0, ticks + kTicksPerSecond / 20) / (kTicksPerSecond / 10));
+    WCHAR text[32];
+    swprintf_s(text, L"%d:%02d.%d", tenths / 600, tenths / 10 % 60, tenths % 10);
+    return text;
+}
+
+// The frame, scaled to the size, for drawing quickly.
+std::unique_ptr<gp::Bitmap> ScaledFrame(const std::vector<BYTE>& pixels, int width, int height, int toWidth, int toHeight) {
+    gp::Bitmap source(width, height, width * 4, PixelFormat32bppRGB, (BYTE*)pixels.data());
+    auto scaled = std::make_unique<gp::Bitmap>(std::max(1, toWidth), std::max(1, toHeight), PixelFormat32bppPARGB);
+    gp::Graphics graphics(scaled.get());
+    graphics.SetInterpolationMode(gp::InterpolationModeHighQualityBilinear);
+    graphics.SetPixelOffsetMode(gp::PixelOffsetModeHalf);
+    graphics.DrawImage(&source, gp::Rect(0, 0, toWidth, toHeight), 0, 0, width, height, gp::UnitPixel);
+    return scaled;
+}
+
+class TrimWindow {
+public:
+    // Called as the window goes, to delete it.
+    std::function<void()> onClosed;
+    // Called when a copy is on the clipboard (saved is false) or the recording is saved, or that
+    // failed. frame is the picture shown, and where is the window.
+    std::function<void(bool saved, bool ok, const std::wstring& path, gp::Bitmap* frame, const RECT& where)> onExported;
+    // The folder to save in.
+    std::function<std::wstring()> saveFolder;
+
+    // The recording is deleted when the window goes.
+    TrimWindow(std::wstring path, const RECT& nearRect) : path_(std::move(path)), nearRect_(nearRect) {}
+
+    ~TrimWindow() {
+        onClosed = nullptr;
+        if (exportThread_) {
+            exportCancel_ = true;
+            WaitForSingleObject(exportThread_, INFINITE);
+            CloseHandle(exportThread_);
+            if (!exportOk_) {
+                DeleteFileW(exportTarget_.c_str());
+            }
+        }
+        if (hwnd_) {
+            DestroyWindow(hwnd_);
+        }
+        reader_.Close();
+        thumbnailReader_.Close();
+        DeleteFileW(path_.c_str());
+    }
+
+    // Opens the recording and shows the window on the display of the area. False if the recording
+    // can't be read.
+    bool Create() {
+        if (!mediaFoundation_.Started() || !reader_.Open(path_) || !thumbnailReader_.Open(path_)) {
+            return false;
+        }
+        duration_ = reader_.Duration();
+        end_ = duration_;
+        HMONITOR monitor = MonitorFromRect(&nearRect_, MONITOR_DEFAULTTONEAREST);
+        UINT dpiX = 96;
+        UINT dpiY = 96;
+        GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
+        scale_ = dpiX / 96.0f;
+        LayOut();
+        RECT frame{0, 0, (LONG)std::lround((kPad * 2 + kContentWidth) * scale_), (LONG)std::lround(clientHeight_)};
+        AdjustWindowRectExForDpi(&frame, kStyle, FALSE, 0, dpiX);
+        MONITORINFO info{sizeof(info)};
+        GetMonitorInfoW(monitor, &info);
+        int width = frame.right - frame.left;
+        int height = frame.bottom - frame.top;
+        int left = (info.rcWork.left + info.rcWork.right - width) / 2;
+        int top = std::max((int)info.rcWork.top, (int)(info.rcWork.top + info.rcWork.bottom - height) / 2);
+        if (const wchar_t* registered = RegisterForwardingClass<TrimWindow>(L"TaskbarSnipper.Mod.Trim")) {
+            CreateWindowExW(0, registered, L"Screen recording - Taskbar Snipper", kStyle, left, top, width, height, nullptr, nullptr,
+                            ModuleInstance(), this);
+        }
+        if (!hwnd_) {
+            return false;
+        }
+        UpdateTitleBar();
+        ShowFrameAt(0);
+        PostMessageW(hwnd_, kThumbnailMessage, 0, 0);
+        ShowWindow(hwnd_, SW_SHOW);
+        SetForegroundWindow(hwnd_);
+        return true;
+    }
+
+    bool HandleMessage(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result) {
+        switch (message) {
+            case WM_ERASEBKGND:
+                result = 1;
+                return true;
+            case WM_PAINT:
+                Paint();
+                return true;
+            case WM_SETCURSOR:
+                if (LOWORD(lParam) == HTCLIENT) {
+                    POINT cursor;
+                    GetCursorPos(&cursor);
+                    ScreenToClient(hwnd_, &cursor);
+                    SetCursor(LoadCursorW(nullptr, CursorAt(cursor)));
+                    result = TRUE;
+                    return true;
+                }
+                return false;
+            case WM_MOUSEMOVE: {
+                TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, hwnd_, 0};
+                TrackMouseEvent(&track);
+                OnMouseMove({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+                return true;
+            }
+            case WM_MOUSELEAVE:
+                SetHover(Button::None);
+                return true;
+            case WM_LBUTTONDOWN:
+                SetCapture(hwnd_);
+                OnMouseDown({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+                return true;
+            case WM_LBUTTONUP:
+                if (GetCapture() == hwnd_) {
+                    ReleaseCapture();
+                }
+                OnMouseUp({GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)});
+                return true;
+            case WM_CAPTURECHANGED:
+                drag_ = Drag::None;
+                return true;
+            case WM_KEYDOWN:
+                OnKeyDown((UINT)wParam);
+                return true;
+            case WM_TIMER:
+                if (wParam == kPlayTimer) {
+                    OnPlayTimer();
+                }
+                return true;
+            case kShowFrameMessage:
+                framePending_ = false;
+                ShowFrameAt(wantedTime_);
+                return true;
+            case kThumbnailMessage:
+                MakeNextThumbnail();
+                return true;
+            case kExportProgressMessage:
+                exportPercent_ = (int)wParam;
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return true;
+            case kExportDoneMessage:
+                OnExportDone();
+                return true;
+            case WM_DPICHANGED: {
+                scale_ = HIWORD(wParam) / 96.0f;
+                auto suggested = (const RECT*)lParam;
+                SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
+                             suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
+                LayOut();
+                UpdatePreview();
+                PostMessageW(hwnd_, kThumbnailMessage, 0, 0);  // At the new size.
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return true;
+            }
+            case WM_SETTINGCHANGE:
+                UpdateTitleBar();
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return false;
+            case WM_CLOSE:
+                if (exporting_) {
+                    MessageBeep(MB_OK);
+                } else if (copied_ || saved_ ||
+                           MessageBoxW(hwnd_, L"The recording hasn't been copied or saved, and it will be gone. Close it anyway?",
+                                       L"Taskbar Snipper", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES) {
+                    DestroyWindow(hwnd_);
+                }
+                return true;
+            case WM_NCDESTROY:
+                if (onClosed) {
+                    onClosed();
+                }
+                return false;
+        }
+        return false;
+    }
+
+    HWND hwnd_ = nullptr;
+
+private:
+    enum class Button { None, Play, Copy, Save };
+    enum class Drag { None, Start, End, Playhead };
+
+    static constexpr DWORD kStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    static constexpr UINT kThumbnailMessage = WM_APP + 1;
+    static constexpr UINT kShowFrameMessage = WM_APP + 2;
+    static constexpr UINT kExportProgressMessage = WM_APP + 3;
+    static constexpr UINT kExportDoneMessage = WM_APP + 4;
+    static constexpr UINT_PTR kPlayTimer = 1;
+    // The layout, in pixels at 100% scaling.
+    static constexpr float kPad = 16;
+    static constexpr float kContentWidth = 720;
+    static constexpr float kTrackHeight = 48;
+    static constexpr float kHandleWidth = 12;
+    static constexpr float kRowHeight = 36;
+    static constexpr float kButtonWidth = 100;
+    static constexpr LONGLONG kFrameTicks = kTicksPerSecond / kRecordingFps;
+    static constexpr LONGLONG kShortest = kTicksPerSecond / 10;  // The shortest a trimmed recording can be.
+
+    int Px(float value) const { return (int)std::lround(value * scale_); }
+
+    void UpdateTitleBar() {
+        BOOL dark = !AppsUseLightTheme();
+        DwmSetWindowAttribute(hwnd_, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark, sizeof(dark));
+    }
+
+    // ---- Layout
+
+    void LayOut() {
+        float s = scale_;
+        float aspect = (float)reader_.Width() / std::max(1, reader_.Height());
+        preview_ = gp::RectF(kPad * s, kPad * s, kContentWidth * s, std::clamp(kContentWidth / aspect, 240.0f, 480.0f) * s);
+        // The picture, fitted into the preview (small ones up to twice their size).
+        float fit = std::min({preview_.Width / reader_.Width(), preview_.Height / reader_.Height(), 2.0f});
+        float width = std::round(reader_.Width() * fit);
+        float height = std::round(reader_.Height() * fit);
+        picture_ = gp::RectF(std::round(preview_.X + (preview_.Width - width) / 2), std::round(preview_.Y + (preview_.Height - height) / 2),
+                             width, height);
+        track_ = gp::RectF(kPad * s, preview_.GetBottom() + 16 * s, kContentWidth * s, kTrackHeight * s);
+        film_ = gp::RectF(track_.X + kHandleWidth * s, track_.Y, track_.Width - 2 * kHandleWidth * s, track_.Height);
+        labelsTop_ = track_.GetBottom() + 6 * s;
+        float row = labelsTop_ + 28 * s;
+        play_ = gp::RectF(kPad * s, row, kRowHeight * s, kRowHeight * s);
+        save_ = gp::RectF((kPad + kContentWidth - kButtonWidth) * s, row, kButtonWidth * s, kRowHeight * s);
+        copy_ = gp::RectF(save_.X - (8 + kButtonWidth) * s, row, kButtonWidth * s, kRowHeight * s);
+        clientHeight_ = row + (kRowHeight + kPad) * s;
+        // Thumbnails along the strip, as wide as the picture's shape makes them.
+        thumbnailWidth_ = std::clamp(film_.Height * aspect, 24 * s, 160 * s);
+        thumbnailCount_ = std::max(1, (int)std::ceil(film_.Width / thumbnailWidth_));
+        thumbnails_.clear();
+    }
+
+    float XFor(LONGLONG time) const { return film_.X + film_.Width * (float)time / std::max<LONGLONG>(1, duration_); }
+
+    LONGLONG TimeAt(float x) const {
+        return std::clamp<LONGLONG>((LONGLONG)((x - film_.X) / film_.Width * duration_), 0, duration_);
+    }
+
+    // The last frame kept, for an end time.
+    LONGLONG LastFrameBefore(LONGLONG end) const { return std::max<LONGLONG>(0, end - kFrameTicks / 2 - 1); }
+
+    gp::RectF StartHandle() const { return gp::RectF(XFor(start_) - kHandleWidth * scale_, track_.Y, kHandleWidth * scale_, track_.Height); }
+    gp::RectF EndHandle() const { return gp::RectF(XFor(end_), track_.Y, kHandleWidth * scale_, track_.Height); }
+
+    bool Trimmed() const { return start_ > kFrameTicks / 2 || end_ < duration_ - kFrameTicks / 2; }
+
+    // ---- Frames
+
+    // Shows the frame at the time: the last one that starts at or before it.
+    void ShowFrameAt(LONGLONG time) {
+        time = std::clamp<LONGLONG>(time, 0, duration_);
+        // Frames are read in order: go back to a key frame unless the one wanted is just ahead.
+        if (!(haveCurrent_ && time >= currentTime_ && time < currentTime_ + kTicksPerSecond)) {
+            reader_.Seek(time);
+            haveCurrent_ = false;
+            haveAhead_ = false;
+        }
+        bool changed = false;
+        while (true) {
+            if (!haveAhead_) {
+                if (!reader_.Read(aheadPixels_, aheadTime_)) {
+                    break;  // The end: the current frame is the last.
+                }
+                haveAhead_ = true;
+            }
+            if (haveCurrent_ && aheadTime_ > time) {
+                break;
+            }
+            std::swap(currentPixels_, aheadPixels_);
+            currentTime_ = aheadTime_;
+            haveCurrent_ = true;
+            haveAhead_ = false;
+            changed = true;
+        }
+        if (changed) {
+            UpdatePreview();
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
+    }
+
+    // Shows the frame at the time once the window is free, skipping any asked for in between.
+    void RequestFrame(LONGLONG time) {
+        wantedTime_ = time;
+        if (!framePending_) {
+            framePending_ = true;
+            PostMessageW(hwnd_, kShowFrameMessage, 0, 0);
+        }
+    }
+
+    void UpdatePreview() {
+        if (haveCurrent_) {
+            frameBitmap_ = ScaledFrame(currentPixels_, reader_.Width(), reader_.Height(), (int)picture_.Width, (int)picture_.Height);
+        }
+    }
+
+    // Makes the next thumbnail for the strip, one at a time so the window stays responsive.
+    void MakeNextThumbnail() {
+        size_t index = thumbnails_.size();
+        if (index >= (size_t)thumbnailCount_) {
+            return;
+        }
+        LONGLONG time = TimeAt(film_.X + (index + 0.5f) * thumbnailWidth_);
+        std::vector<BYTE> pixels;
+        std::vector<BYTE> next;
+        LONGLONG frameTime = 0;
+        bool have = false;
+        thumbnailReader_.Seek(time);
+        while (thumbnailReader_.Read(next, frameTime) && !(have && frameTime > time)) {
+            pixels.swap(next);
+            have = true;
+        }
+        thumbnails_.push_back(have ? ScaledFrame(pixels, thumbnailReader_.Width(), thumbnailReader_.Height(),
+                                                 (int)std::ceil(thumbnailWidth_), (int)track_.Height)
+                                   : nullptr);
+        RECT strip = {(LONG)track_.X, (LONG)track_.Y, (LONG)std::ceil(track_.GetRight()), (LONG)std::ceil(track_.GetBottom())};
+        InvalidateRect(hwnd_, &strip, FALSE);
+        if (thumbnails_.size() < (size_t)thumbnailCount_) {
+            PostMessageW(hwnd_, kThumbnailMessage, 0, 0);
+        }
+    }
+
+    // ---- Playing
+
+    void TogglePlay() {
+        if (playing_) {
+            StopPlaying();
+        } else {
+            StartPlaying();
+        }
+    }
+
+    // Plays the part kept, from the playhead (or the start, when it's outside or at the end).
+    void StartPlaying() {
+        if (playhead_ < start_ || playhead_ >= end_ - kFrameTicks / 2) {
+            playhead_ = start_;
+        }
+        playing_ = true;
+        playFrom_ = playhead_;
+        QueryPerformanceCounter(&playOrigin_);
+        SetTimer(hwnd_, kPlayTimer, 10, nullptr);
+        ShowFrameAt(playhead_);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void StopPlaying() {
+        if (playing_) {
+            playing_ = false;
+            KillTimer(hwnd_, kPlayTimer);
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
+    }
+
+    void OnPlayTimer() {
+        LARGE_INTEGER now;
+        LARGE_INTEGER frequency;
+        QueryPerformanceCounter(&now);
+        QueryPerformanceFrequency(&frequency);
+        LONGLONG time = playFrom_ + (LONGLONG)((now.QuadPart - playOrigin_.QuadPart) * (double)kTicksPerSecond / frequency.QuadPart);
+        if (time >= end_) {
+            playhead_ = end_;
+            ShowFrameAt(LastFrameBefore(end_));
+            StopPlaying();
+        } else {
+            playhead_ = time;
+            ShowFrameAt(time);
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    // Moves the playhead and shows the frame there.
+    void Seek(LONGLONG time) {
+        StopPlaying();
+        playhead_ = std::clamp<LONGLONG>(time, 0, duration_);
+        RequestFrame(playhead_);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void SetStart(LONGLONG time) {
+        start_ = std::clamp<LONGLONG>(time, 0, std::max<LONGLONG>(0, end_ - kShortest));
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void SetEnd(LONGLONG time) {
+        end_ = std::clamp<LONGLONG>(time, std::min(duration_, start_ + kShortest), duration_);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    // ---- Mouse and keyboard
+
+    Button ButtonAt(POINT point) const {
+        gp::PointF at((float)point.x, (float)point.y);
+        if (play_.Contains(at)) {
+            return Button::Play;
+        }
+        if (!exporting_ && copy_.Contains(at)) {
+            return Button::Copy;
+        }
+        if (!exporting_ && save_.Contains(at)) {
+            return Button::Save;
+        }
+        return Button::None;
+    }
+
+    Drag DragAt(POINT point) const {
+        gp::RectF area = track_;
+        area.Inflate(0, 8 * scale_);
+        if (!area.Contains(gp::PointF((float)point.x, (float)point.y))) {
+            return Drag::None;
+        }
+        // The handles, with a little room around them; the nearer one when they're close.
+        gp::RectF start = StartHandle();
+        gp::RectF end = EndHandle();
+        float slack = 4 * scale_;
+        bool onStart = point.x >= start.X - slack && point.x <= start.GetRight() + slack;
+        bool onEnd = point.x >= end.X - slack && point.x <= end.GetRight() + slack;
+        if (onStart && onEnd) {
+            return std::abs(point.x - start.GetRight()) <= std::abs(point.x - end.X) ? Drag::Start : Drag::End;
+        }
+        return onStart ? Drag::Start : onEnd ? Drag::End : Drag::Playhead;
+    }
+
+    LPCWSTR CursorAt(POINT point) const {
+        if (drag_ == Drag::Start || drag_ == Drag::End) {
+            return IDC_SIZEWE;
+        }
+        if (ButtonAt(point) != Button::None) {
+            return IDC_HAND;
+        }
+        Drag drag = DragAt(point);
+        return drag == Drag::Start || drag == Drag::End ? IDC_SIZEWE : IDC_ARROW;
+    }
+
+    void SetHover(Button button) {
+        if (button != hover_) {
+            hover_ = button;
+            InvalidateRect(hwnd_, nullptr, FALSE);
+        }
+    }
+
+    void OnMouseDown(POINT point) {
+        Button button = ButtonAt(point);
+        if (button != Button::None) {
+            pressed_ = button;
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        }
+        drag_ = DragAt(point);
+        if (drag_ != Drag::None) {
+            StopPlaying();
+            DragTo(point.x);
+        }
+    }
+
+    void OnMouseMove(POINT point) {
+        if (drag_ != Drag::None) {
+            DragTo(point.x);
+            return;
+        }
+        SetHover(ButtonAt(point));
+    }
+
+    void OnMouseUp(POINT point) {
+        Button pressed = pressed_;
+        pressed_ = Button::None;
+        drag_ = Drag::None;
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        if (pressed != Button::None && pressed == ButtonAt(point)) {
+            Activate(pressed);
+        }
+    }
+
+    void DragTo(int x) {
+        LONGLONG time = TimeAt((float)x);
+        switch (drag_) {
+            case Drag::Start:
+                SetStart(time);
+                playhead_ = start_;
+                RequestFrame(start_);
+                break;
+            case Drag::End:
+                SetEnd(time);
+                playhead_ = end_;
+                RequestFrame(LastFrameBefore(end_));
+                break;
+            case Drag::Playhead:
+                Seek(time);
+                break;
+            case Drag::None:
+                break;
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    void OnKeyDown(UINT key) {
+        bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        LONGLONG step = shift ? kTicksPerSecond : kFrameTicks;
+        // The frame on screen: where I and O put the start and end.
+        LONGLONG shown = haveCurrent_ ? currentTime_ : playhead_;
+        switch (key) {
+            case VK_SPACE:
+                TogglePlay();
+                break;
+            case VK_LEFT:
+                Seek(playhead_ - step);
+                break;
+            case VK_RIGHT:
+                Seek(playhead_ + step);
+                break;
+            case VK_HOME:
+                Seek(start_);
+                break;
+            case VK_END:
+                Seek(LastFrameBefore(end_));
+                break;
+            case 'I':
+            case VK_OEM_4:  // [
+                SetStart(shown);
+                break;
+            case 'O':
+            case VK_OEM_6:  // ]
+                SetEnd(shown + kFrameTicks);
+                break;
+            case 'C':
+                if (control) {
+                    Activate(Button::Copy);
+                }
+                break;
+            case 'S':
+                if (control) {
+                    Activate(Button::Save);
+                }
+                break;
+            case VK_ESCAPE:
+                PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+                break;
+        }
+    }
+
+    void Activate(Button button) {
+        switch (button) {
+            case Button::Play:
+                TogglePlay();
+                break;
+            case Button::Copy:
+                Export(false);
+                break;
+            case Button::Save:
+                Export(true);
+                break;
+            case Button::None:
+                break;
+        }
+    }
+
+    // ---- Copying and saving
+
+    // Saves the part kept to the save folder, or for a copy, to the temporary folder and puts it on
+    // the clipboard. Runs on a thread of its own; the window shows how far it's got.
+    void Export(bool save) {
+        if (exporting_) {
+            return;
+        }
+        StopPlaying();
+        std::wstring folder = save && saveFolder ? saveFolder() : TemporaryFolder();
+        if (!folder.empty()) {
+            SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);  // Fails harmlessly when it's there already.
+        }
+        if (folder.empty() || GetFileAttributesW(folder.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            status_ = save ? L"Couldn't open the folder to save in" : L"Couldn't make a copy";
+            InvalidateRect(hwnd_, nullptr, FALSE);
+            return;
+        }
+        exportTarget_ = NewFileName(folder, L"Screen Recording", L".mp4");
+        exportSave_ = save;
+        exportWhole_ = !Trimmed();
+        exportStart_ = start_;
+        exportEnd_ = end_;
+        exportWindow_ = hwnd_;
+        exportCancel_ = false;
+        exportOk_ = false;
+        exportPercent_ = 0;
+        exportThread_ = CreateThread(nullptr, 0, ExportProc, this, 0, nullptr);
+        exporting_ = exportThread_ != nullptr;
+        status_.clear();
+        SetHover(Button::None);
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+
+    static DWORD WINAPI ExportProc(void* parameter) {
+        auto self = (TrimWindow*)parameter;
+        ComThread com;
+        bool ok;
+        if (self->exportWhole_) {
+            ok = CopyFileW(self->path_.c_str(), self->exportTarget_.c_str(), TRUE);
+        } else {
+            MediaFoundation mediaFoundation;
+            int percent = -1;
+            ok = mediaFoundation.Started() &&
+                 CopyVideoPart(self->path_, self->exportTarget_, self->exportStart_, self->exportEnd_, [&](double progress) {
+                     if ((int)(progress * 100) != percent) {
+                         percent = (int)(progress * 100);
+                         PostMessageW(self->exportWindow_, kExportProgressMessage, percent, 0);
+                     }
+                     return !self->exportCancel_;
+                 });
+        }
+        self->exportOk_ = ok;
+        PostMessageW(self->exportWindow_, kExportDoneMessage, 0, 0);
+        return 0;
+    }
+
+    void OnExportDone() {
+        WaitForSingleObject(exportThread_, INFINITE);
+        CloseHandle(exportThread_);
+        exportThread_ = nullptr;
+        exporting_ = false;
+        bool ok = exportOk_;
+        if (!ok) {
+            DeleteFileW(exportTarget_.c_str());
+        } else if (!exportSave_) {
+            ok = CopyFileToClipboard(hwnd_, exportTarget_);
+        }
+        if (exportSave_) {
+            saved_ = saved_ || ok;
+            status_ = ok ? L"Saved" : L"Couldn't save it";
+        } else {
+            copied_ = copied_ || ok;
+            status_ = ok ? L"Copied" : L"Couldn't copy it";
+        }
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        if (onExported) {
+            RECT where;
+            GetWindowRect(hwnd_, &where);
+            onExported(exportSave_, ok, exportTarget_, frameBitmap_.get(), where);
+        }
+    }
+
+    // ---- Painting
+
+    void Paint() {
+        PAINTSTRUCT paint;
+        HDC dc = BeginPaint(hwnd_, &paint);
+        RECT client;
+        GetClientRect(hwnd_, &client);
+        HDC memory = CreateCompatibleDC(dc);
+        HBITMAP bitmap = CreateCompatibleBitmap(dc, client.right, client.bottom);
+        HGDIOBJ previous = SelectObject(memory, bitmap);
+        PaintTo(memory, client);
+        BitBlt(dc, 0, 0, client.right, client.bottom, memory, 0, 0, SRCCOPY);
+        SelectObject(memory, previous);
+        DeleteObject(bitmap);
+        DeleteDC(memory);
+        EndPaint(hwnd_, &paint);
+    }
+
+    // Draws the window's content into the device context.
+    void PaintTo(HDC memory, const RECT& client) {
+        Palette colors = Palette::Current();
+        gp::Graphics graphics(memory);
+        graphics.SetSmoothingMode(gp::SmoothingModeAntiAlias);
+        graphics.SetTextRenderingHint(gp::TextRenderingHintClearTypeGridFit);
+        graphics.Clear(WithAlpha(255, colors.background));
+        DrawPreview(graphics);
+        DrawTrack(graphics, colors);
+        DrawControls(graphics, colors);
+    }
+
+    void DrawPreview(gp::Graphics& graphics) {
+        FillRoundedRect(graphics, Argb(255, 0, 0, 0), preview_, 6 * scale_);
+        if (frameBitmap_) {
+            graphics.DrawImage(frameBitmap_.get(), (INT)picture_.X, (INT)picture_.Y, (INT)frameBitmap_->GetWidth(),
+                               (INT)frameBitmap_->GetHeight());
+        }
+    }
+
+    void DrawTrack(gp::Graphics& graphics, const Palette& colors) {
+        float s = scale_;
+        FillRoundedRect(graphics, Argb(255, 24, 24, 24), film_, 4 * s);
+        graphics.SetClip(film_);
+        for (size_t i = 0; i < thumbnails_.size(); i++) {
+            if (thumbnails_[i]) {
+                graphics.DrawImage(thumbnails_[i].get(), (INT)(film_.X + i * thumbnailWidth_), (INT)film_.Y,
+                                   (INT)thumbnails_[i]->GetWidth(), (INT)thumbnails_[i]->GetHeight());
+            }
+        }
+        graphics.ResetClip();
+        // Darkens what's cut.
+        float startX = XFor(start_);
+        float endX = XFor(end_);
+        gp::SolidBrush cut(Argb(175, 0, 0, 0));
+        graphics.FillRectangle(&cut, film_.X, film_.Y, startX - film_.X, film_.Height);
+        graphics.FillRectangle(&cut, endX, film_.Y, film_.GetRight() - endX, film_.Height);
+        // The part kept: a frame with a handle at each end.
+        gp::RectF start = StartHandle();
+        gp::RectF end = EndHandle();
+        gp::SolidBrush frame(kSelectionColor);
+        float bar = 3 * s;
+        graphics.FillRectangle(&frame, start.GetRight() - 1, track_.Y, end.X - start.GetRight() + 2, bar);
+        graphics.FillRectangle(&frame, start.GetRight() - 1, track_.GetBottom() - bar, end.X - start.GetRight() + 2, bar);
+        for (const gp::RectF& handle : {start, end}) {
+            FillRoundedRect(graphics, kSelectionColor, handle, 3 * s);
+            gp::Pen grip(Argb(160, 0, 0, 0), std::max(1.0f, 1.5f * s));
+            float middle = handle.X + handle.Width / 2;
+            float top = handle.Y + handle.Height * 0.36f;
+            float bottom = handle.GetBottom() - handle.Height * 0.36f;
+            graphics.DrawLine(&grip, middle - 1.5f * s, top, middle - 1.5f * s, bottom);
+            graphics.DrawLine(&grip, middle + 1.5f * s, top, middle + 1.5f * s, bottom);
+        }
+        // The playhead.
+        float x = XFor(playhead_);
+        gp::Pen outline(Argb(150, 0, 0, 0), 4 * s);
+        graphics.DrawLine(&outline, x, track_.Y - 4 * s, x, track_.GetBottom() + 4 * s);
+        gp::Pen line(Argb(255, 255, 255, 255), 2 * s);
+        graphics.DrawLine(&line, x, track_.Y - 4 * s, x, track_.GetBottom() + 4 * s);
+        // The start and end times under the handles, kept apart.
+        gp::Font font(L"Segoe UI", 12.0f * s, gp::FontStyleRegular, gp::UnitPixel);
+        std::wstring startText = FormatTime(start_);
+        std::wstring endText = FormatTime(end_);
+        float startWidth = MeasureTextWidth(graphics, startText, font) + 4 * s;
+        float endWidth = MeasureTextWidth(graphics, endText, font) + 4 * s;
+        float startLeft = std::clamp(start.X + start.Width / 2 - startWidth / 2, track_.X, track_.GetRight() - startWidth);
+        float endLeft = std::clamp(end.X + end.Width / 2 - endWidth / 2, track_.X, track_.GetRight() - endWidth);
+        if (endLeft < startLeft + startWidth + 6 * s) {
+            float middle = (startLeft + startWidth + endLeft) / 2;
+            startLeft = std::max(track_.X, middle - 3 * s - startWidth);
+            endLeft = std::min(track_.GetRight() - endWidth, startLeft + startWidth + 6 * s);
+        }
+        DrawTextLine(graphics, startText, font, colors.secondary, gp::RectF(startLeft, labelsTop_, startWidth, 18 * s), TextAlign::Center);
+        DrawTextLine(graphics, endText, font, colors.secondary, gp::RectF(endLeft, labelsTop_, endWidth, 18 * s), TextAlign::Center);
+    }
+
+    void DrawButton(gp::Graphics& graphics, const Palette& colors, Button button, const gp::RectF& rect, const wchar_t* glyph,
+                    const std::wstring& label, bool primary) {
+        float s = scale_;
+        bool enabled = button == Button::Play || !exporting_;
+        bool hovered = enabled && button == hover_;
+        bool pressed = hovered && button == pressed_;
+        gp::Color ink = colors.foreground;
+        if (primary) {
+            FillRoundedRect(graphics, WithAlpha(enabled ? (pressed ? 200 : hovered ? 225 : 255) : 110, colors.accent), rect, 4 * s);
+            ink = lightTheme_ ? Argb(255, 255, 255, 255) : Argb(255, 0, 0, 0);
+        } else {
+            FillRoundedRect(graphics, pressed ? colors.pressed : colors.hover, rect, 4 * s);
+            if (hovered && !pressed) {
+                FillRoundedRect(graphics, colors.hover, rect, 4 * s);
+            }
+            DrawRoundedRect(graphics, colors.border, rect, 4 * s, 1);
+            if (!enabled) {
+                ink = WithAlpha(110, ink);
+            }
+        }
+        if (label.empty()) {
+            DrawGlyph(graphics, glyph, 14 * s, rect, ink);
+            return;
+        }
+        gp::Font font(L"Segoe UI Semibold", 13.0f * s, gp::FontStyleRegular, gp::UnitPixel);
+        float textWidth = MeasureTextWidth(graphics, label, font);
+        float iconSize = 16 * s;
+        float left = rect.X + (rect.Width - iconSize - 8 * s - textWidth) / 2;
+        DrawGlyph(graphics, glyph, 14 * s, gp::RectF(left, rect.Y, iconSize, rect.Height), ink);
+        DrawTextLine(graphics, label, font, ink, gp::RectF(left + iconSize + 8 * s, rect.Y, textWidth + 4 * s, rect.Height));
+    }
+
+    void DrawControls(gp::Graphics& graphics, const Palette& colors) {
+        float s = scale_;
+        lightTheme_ = AppsUseLightTheme();
+        DrawButton(graphics, colors, Button::Play, play_, playing_ ? kGlyphPause : kGlyphPlay, L"", false);
+        DrawButton(graphics, colors, Button::Copy, copy_, kGlyphCopy, L"Copy", false);
+        DrawButton(graphics, colors, Button::Save, save_, kGlyphSave, L"Save", true);
+        // Where the playhead is, and how long the part kept is.
+        gp::Font timeFont(L"Segoe UI Semibold", 13.0f * s, gp::FontStyleRegular, gp::UnitPixel);
+        gp::Font font(L"Segoe UI", 12.0f * s, gp::FontStyleRegular, gp::UnitPixel);
+        std::wstring time = FormatTime(playhead_) + L" / " + FormatTime(duration_);
+        float x = play_.GetRight() + 12 * s;
+        float timeWidth = MeasureTextWidth(graphics, time, timeFont) + 4 * s;
+        DrawTextLine(graphics, time, timeFont, colors.foreground, gp::RectF(x, play_.Y, timeWidth, play_.Height));
+        x += timeWidth + 10 * s;
+        if (Trimmed()) {
+            DrawTextLine(graphics, L"Keeping " + FormatTime(end_ - start_), font, colors.secondary,
+                         gp::RectF(x, play_.Y, copy_.X - x, play_.Height));
+        }
+        // What copying or saving did, right of the rest.
+        std::wstring status = status_;
+        if (exporting_) {
+            status = std::wstring(exportSave_ ? L"Saving" : L"Copying") + L"… " + (exportWhole_ ? L"" : std::to_wstring(exportPercent_) + L"%");
+        }
+        if (!status.empty()) {
+            float width = MeasureTextWidth(graphics, status, font) + 4 * s;
+            DrawTextLine(graphics, status, font, colors.secondary, gp::RectF(copy_.X - 12 * s - width, play_.Y, width, play_.Height));
+        }
+    }
+
+    MediaFoundation mediaFoundation_;  // First: kept until the readers are gone.
+    std::wstring path_;
+    RECT nearRect_;
+    VideoReader reader_;
+    VideoReader thumbnailReader_;
+    float scale_ = 1;
+    bool lightTheme_ = false;
+    LONGLONG duration_ = 0;
+    LONGLONG start_ = 0;
+    LONGLONG end_ = 0;
+    LONGLONG playhead_ = 0;
+    // The frame on screen, and the one after it, read ahead.
+    std::vector<BYTE> currentPixels_;
+    std::vector<BYTE> aheadPixels_;
+    LONGLONG currentTime_ = 0;
+    LONGLONG aheadTime_ = 0;
+    bool haveCurrent_ = false;
+    bool haveAhead_ = false;
+    std::unique_ptr<gp::Bitmap> frameBitmap_;
+    LONGLONG wantedTime_ = 0;
+    bool framePending_ = false;
+    std::vector<std::unique_ptr<gp::Bitmap>> thumbnails_;
+    float thumbnailWidth_ = 1;
+    int thumbnailCount_ = 0;
+    bool playing_ = false;
+    LONGLONG playFrom_ = 0;
+    LARGE_INTEGER playOrigin_{};
+    // Layout, in pixels.
+    gp::RectF preview_;
+    gp::RectF picture_;
+    gp::RectF track_;
+    gp::RectF film_;
+    gp::RectF play_;
+    gp::RectF copy_;
+    gp::RectF save_;
+    float labelsTop_ = 0;
+    float clientHeight_ = 0;
+    Button hover_ = Button::None;
+    Button pressed_ = Button::None;
+    Drag drag_ = Drag::None;
+    // Copying and saving.
+    HANDLE exportThread_ = nullptr;
+    HWND exportWindow_ = nullptr;
+    std::wstring exportTarget_;
+    LONGLONG exportStart_ = 0;
+    LONGLONG exportEnd_ = 0;
+    bool exportSave_ = false;
+    bool exportWhole_ = false;
+    std::atomic<bool> exportCancel_{false};
+    std::atomic<bool> exportOk_{false};
+    int exportPercent_ = 0;
+    bool exporting_ = false;
+    bool copied_ = false;
+    bool saved_ = false;
+    std::wstring status_;
+};
+
+// ---------------------------------------------------------------------------
+// The app: waits for Print Screen, Win+Shift+R or a click on a button, runs the overlay, copies or
+// saves the screenshot, and records the screen and opens the recording to trim.
 
 class SnipApp {
 public:
@@ -3762,35 +5830,45 @@ public:
         }
         pen_.color = (ARGB)Storage::GetInt(L"Color", (int)pen_.color);
         pen_.thickness = std::clamp(Storage::GetInt(L"Thickness", pen_.thickness), kMinThickness, kMaxThickness);
+        CleanUpTemporaryFolder();
         if (!messages_.Create(L"TaskbarSnipper.Mod.Messages") || !notice_.Create()) {
             return false;
         }
-        messages_.onMessage = [this](UINT message, WPARAM wParam, LPARAM lParam) { OnMessage(message); };
-        // The button's window is there even while it's hidden, so the other widgets still see it,
+        messages_.onMessage = [this](UINT message, WPARAM wParam, LPARAM lParam) { OnMessage(message, lParam); };
+        // The buttons' window is there even while it's hidden, so the other widgets still see it,
         // and it still hears about changes to the Windows settings.
+        widget_.SetRecordButton(settings_.recordButton);
         if (!widget_.Create(Storage::GetInt(L"TaskbarOffset", -1))) {
             return false;
         }
         widget_.onOffsetChanged = [](int offset) { Storage::SetInt(L"TaskbarOffset", offset); };
         widget_.onSnip = [this]() { StartCaptureFromWidget(); };
+        widget_.onRecord = [this]() { ToggleRecording(); };
         widget_.onMenu = [this]() { ShowMenu(); };
         widget_.SetShown(settings_.showButton);
+        hook_.SetRecordShortcut(settings_.recordShortcut);
         return hook_.Start(messages_.Handle());
     }
 
     ~SnipApp() {
         hook_.Stop();
         overlay_.reset();
+        recorder_.Stop();
+        recordingBar_.Hide();
+        trimWindows_.clear();
         widget_.Destroy();
     }
 
     HWND MessageHandle() const { return messages_.Handle(); }
 
 private:
-    void OnMessage(UINT message) {
+    void OnMessage(UINT message, LPARAM lParam) {
         switch (message) {
             case kPrintScreenMessage:
-                StartCapture();
+                StartCapture(false);
+                break;
+            case kRecordMessage:
+                ToggleRecording();
                 break;
             case kEscapeMessage:
                 if (overlay_) {
@@ -3799,17 +5877,25 @@ private:
                 break;
             case kSettingsChangedMessage:
                 settings_ = ModSettings::Load();
+                widget_.SetRecordButton(settings_.recordButton);
                 widget_.SetShown(settings_.showButton);
+                hook_.SetRecordShortcut(settings_.recordShortcut);
                 break;
             case kOverlayClosedMessage:
                 overlay_.reset();
                 hook_.SetOverlayOpen(false);
                 break;
+            case kTrimClosedMessage: {
+                auto closed = (const TrimWindow*)lParam;
+                std::erase_if(trimWindows_, [closed](const std::unique_ptr<TrimWindow>& window) { return window.get() == closed; });
+                break;
+            }
         }
     }
 
-    void StartCapture() {
-        if (overlay_) {
+    // Opens the overlay to select an area: for a screenshot, or to record.
+    void StartCapture(bool forRecording) {
+        if (overlay_ || (forRecording && recordingBar_.Shown())) {
             return;
         }
         // Where the windows are, before the overlay covers them.
@@ -3819,7 +5905,7 @@ private:
             Wh_Log(L"Couldn't copy the screen");
             return;
         }
-        overlay_ = std::make_unique<Overlay>(std::move(screen), std::move(windows), pen_);
+        overlay_ = std::make_unique<Overlay>(std::move(screen), std::move(windows), pen_, forRecording);
         overlay_->onPenChanged = [this](const Pen& pen) { pen_ = pen; };
         overlay_->onDone = [this](std::optional<Finish> finish) { OnOverlayDone(finish); };
         if (!overlay_->Create()) {
@@ -3834,24 +5920,7 @@ private:
     // when it isn't hovered or pressed, so the screenshot shows it that way too.
     void StartCaptureFromWidget() {
         DwmFlush();
-        StartCapture();
-    }
-
-    void OpenSaveFolder() {
-        SHCreateDirectoryExW(nullptr, settings_.saveFolder.c_str(), nullptr);  // Fails harmlessly when it's there already.
-        ShellExecuteW(nullptr, L"open", settings_.saveFolder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    }
-
-    void ShowMenu() {
-        Menu menu;
-        menu.Add(L"Take a screenshot\tPrint Screen", [this]() { StartCaptureFromWidget(); });
-        menu.Add(L"Open the screenshots folder", [this]() { OpenSaveFolder(); });
-        AddLinkMenu(menu, widget_);
-        RECT bounds = widget_.Bounds();
-        POINT cursor;
-        GetCursorPos(&cursor);
-        // Above the widget, which keeps itself on top and would otherwise cover the menu.
-        menu.Show(widget_.Handle(), {cursor.x, bounds.top});
+        StartCapture(false);
     }
 
     void OnOverlayDone(std::optional<Finish> finish) {
@@ -3863,23 +5932,27 @@ private:
         if (!finish) {
             return;
         }
-        RECT selection = overlay_->SelectionInOverlay();
         RECT onScreen = overlay_->SelectionOnScreen();
+        if (*finish == Finish::Record) {
+            StartCountdown(onScreen);
+            return;
+        }
+        RECT selection = overlay_->SelectionInOverlay();
         std::unique_ptr<gp::Bitmap> image = ComposeScreenshot(overlay_->Screen(), selection, overlay_->Marks());
         if (!image) {
             notice_.Show(L"Couldn't make the screenshot", L"Windows ran out of memory for it.", L"", nullptr, onScreen);
             return;
         }
+        const std::wstring& folder = settings_.screenshots.path;
         bool copy = *finish == Finish::Copy || (*finish == Finish::Default && settings_.afterCapture != AfterCapture::Save);
         bool save = *finish == Finish::Save || (*finish == Finish::Default && settings_.afterCapture != AfterCapture::Copy);
         bool copied = copy && CopyToClipboard(messages_.Handle(), *image);
-        std::optional<std::wstring> saved = save ? SaveScreenshot(*image, settings_.saveFolder) : std::nullopt;
+        std::optional<std::wstring> saved = save ? SaveScreenshot(*image, folder) : std::nullopt;
 
         std::wstring size = std::to_wstring(image->GetWidth()) + L" × " + std::to_wstring(image->GetHeight());
         std::wstring fileName = saved ? saved->substr(saved->find_last_of(L'\\') + 1) : L"";
         if (save && !saved) {
-            notice_.Show(copied ? L"Copied, but couldn't save it" : L"Couldn't save the screenshot", settings_.saveFolder, L"",
-                         image.get(), onScreen);
+            notice_.Show(copied ? L"Copied, but couldn't save it" : L"Couldn't save the screenshot", folder, L"", image.get(), onScreen);
         } else if (copy && !copied) {
             notice_.Show(saved ? L"Saved, but couldn't copy it" : L"Couldn't copy the screenshot",
                          saved ? fileName : L"Another app is holding the clipboard.", saved.value_or(L""), image.get(), onScreen);
@@ -3892,6 +5965,143 @@ private:
         }
     }
 
+    // ---- Recording
+
+    // Win+Shift+R and the record button: select an area to record, or stop recording.
+    void ToggleRecording() {
+        if (recordingBar_.Shown()) {
+            StopRecording();
+        } else {
+            DwmFlush();  // As for a screenshot from the button.
+            StartCapture(true);
+        }
+    }
+
+    // Counts down beside the area, then records it.
+    void StartCountdown(const RECT& area) {
+        recordingArea_ = area;
+        recordingBar_.onCountdownDone = [this]() { StartRecording(); };
+        recordingBar_.onStop = [this]() { StopRecording(); };
+        recordingBar_.onCancel = [this]() { CancelRecording(); };
+        recordingBar_.elapsed = [this]() { return recorder_.Elapsed(); };
+        recordingBar_.failed = [this]() { return recorder_.Failed(); };
+        if (recordingBar_.Show(area)) {
+            widget_.SetRecording(true);
+        }
+    }
+
+    void StartRecording() {
+        std::wstring folder = TemporaryFolder();
+        recordingPath_ = folder.empty() ? L"" : NewFileName(folder, L"Recording", L".mp4");
+        SIZE size = VideoSizeFor(recordingArea_.right - recordingArea_.left, recordingArea_.bottom - recordingArea_.top);
+        if (recordingPath_.empty() || !recorder_.Start(recordingPath_, size, ScreenFrames(recordingArea_))) {
+            recordingBar_.Hide();
+            widget_.SetRecording(false);
+            if (!recordingPath_.empty()) {
+                DeleteFileW(recordingPath_.c_str());
+                recordingPath_.clear();
+            }
+            notice_.Show(L"Couldn't start recording", L"Windows couldn't start a video file.", L"", nullptr, recordingArea_);
+            return;
+        }
+        recordingBar_.StartedRecording();
+    }
+
+    // Stops recording, and opens the recording to trim. During the countdown, it just stops.
+    void StopRecording() {
+        bool recording = recorder_.Recording();
+        recorder_.Stop();
+        recordingBar_.Hide();
+        widget_.SetRecording(false);
+        if (recording) {
+            OpenTrimWindow(recordingPath_);
+            recordingPath_.clear();  // The trim window has it now.
+        }
+    }
+
+    // Stops recording and throws the recording away.
+    void CancelRecording() {
+        bool recording = recorder_.Recording();
+        recorder_.Stop();
+        recordingBar_.Hide();
+        widget_.SetRecording(false);
+        if (recording) {
+            DeleteFileW(recordingPath_.c_str());
+        }
+        recordingPath_.clear();
+    }
+
+    void OpenTrimWindow(const std::wstring& path) {
+        auto window = std::make_unique<TrimWindow>(path, recordingArea_);
+        const TrimWindow* opened = window.get();
+        window->saveFolder = [this]() { return settings_.recordings.path; };
+        window->onExported = [this](bool saved, bool ok, const std::wstring& file, gp::Bitmap* frame, const RECT& where) {
+            OnRecordingExported(saved, ok, file, frame, where);
+        };
+        window->onClosed = [this, opened]() { PostMessageW(messages_.Handle(), kTrimClosedMessage, 0, (LPARAM)opened); };
+        if (!window->Create()) {
+            // The recording goes with the window.
+            notice_.Show(L"The recording didn't work", L"Windows couldn't make a video of it.", L"", nullptr, recordingArea_);
+            return;
+        }
+        trimWindows_.push_back(std::move(window));
+    }
+
+    void OnRecordingExported(bool saved, bool ok, const std::wstring& file, gp::Bitmap* frame, const RECT& where) {
+        std::wstring fileName = file.substr(file.find_last_of(L'\\') + 1);
+        if (saved && ok) {
+            notice_.Show(L"Recording saved", fileName + L" · click to show it", file, frame, where);
+        } else if (saved) {
+            notice_.Show(L"Couldn't save the recording", settings_.recordings.path, L"", frame, where);
+        } else if (ok) {
+            notice_.Show(L"Recording copied", L"Paste it into a chat, an email or a folder.", L"", frame, where);
+        } else {
+            notice_.Show(L"Couldn't copy the recording", L"Another app is holding the clipboard.", L"", frame, where);
+        }
+    }
+
+    // ---- The menu
+
+    void OpenFolder(const std::wstring& folder) {
+        SHCreateDirectoryExW(nullptr, folder.c_str(), nullptr);  // Fails harmlessly when it's there already.
+        ShellExecuteW(nullptr, L"open", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+
+    void ChooseFolder(SaveFolder& folder, const wchar_t* title, const wchar_t* done) {
+        std::optional<std::wstring> chosen = PickFolder(widget_.Handle(), title, folder.path);
+        if (chosen) {
+            folder.Choose(*chosen);
+            notice_.Show(done, *chosen, L"", nullptr, widget_.Bounds());
+        }
+    }
+
+    void ShowMenu() {
+        Menu menu;
+        menu.Add(L"Take a screenshot\tPrint Screen", [this]() { StartCaptureFromWidget(); });
+        if (recordingBar_.Shown()) {
+            menu.Add(L"Stop recording", [this]() { StopRecording(); });
+        } else {
+            menu.Add(std::wstring(L"Record the screen") + (settings_.recordShortcut ? L"\tWin+Shift+R" : L""),
+                     [this]() { ToggleRecording(); });
+        }
+        menu.AddSeparator();
+        menu.Add(L"Open the screenshots folder", [this]() { OpenFolder(settings_.screenshots.path); });
+        menu.Add(L"Choose the screenshots folder…", [this]() {
+            ChooseFolder(settings_.screenshots, L"Choose the folder to save screenshots in", L"Screenshots will be saved here");
+        });
+        menu.AddSeparator();
+        menu.Add(L"Open the recordings folder", [this]() { OpenFolder(settings_.recordings.path); });
+        menu.Add(L"Choose the recordings folder…", [this]() {
+            ChooseFolder(settings_.recordings, L"Choose the folder to save recordings in", L"Recordings will be saved here");
+        });
+        AddLinkMenu(menu, widget_);
+        RECT bounds = widget_.Bounds();
+        POINT cursor;
+        GetCursorPos(&cursor);
+        // Above the widget, which keeps itself on top and would otherwise cover the menu.
+        menu.Show(widget_.Handle(), {cursor.x, bounds.top});
+    }
+
     ModSettings settings_;
     Pen pen_;
     MessageWindow messages_;
@@ -3899,6 +6109,11 @@ private:
     Notice notice_;
     SnipperWidget widget_;
     std::unique_ptr<Overlay> overlay_;
+    Recorder recorder_;
+    RecordingBar recordingBar_;
+    RECT recordingArea_{};
+    std::wstring recordingPath_;  // While recording.
+    std::vector<std::unique_ptr<TrimWindow>> trimWindows_;
 };
 
 // ---------------------------------------------------------------------------

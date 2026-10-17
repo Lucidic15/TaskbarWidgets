@@ -2,10 +2,14 @@
 
 A [Windhawk](https://windhawk.net) mod: **Print Screen**, or a screenshot button on the taskbar,
 selects part of the screen with a toolbox right above it to draw, and add lines, arrows, boxes and
-text in any color and thickness, then move and restyle them. Click outside the selection when you're done, and the screenshot is copied to the
-clipboard, saved to a folder, or both, as set in the mod's settings.
+text in any color and thickness, then move and restyle them. Click outside the selection when
+you're done, and the screenshot is copied to the clipboard, saved to a folder, or both, as set in
+the mod's settings.
 
-The button links with the [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper)
+**Win+Shift+R**, or the record button beside it, records part of the screen as an MP4 video. When
+you stop, a window plays it back to trim its start and end, then copies or saves it.
+
+The buttons link with the [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper)
 and [Taskbar RDP Launcher](https://windhawk.net/mods/taskbar-rdp-launcher) widgets into one.
 
 ## Trying it
