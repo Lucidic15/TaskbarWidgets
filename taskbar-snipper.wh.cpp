@@ -6,7 +6,7 @@
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
 // @include         windhawk.exe
-// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -luuid -lcomdlg32 -lmsimg32 -lmfplat -lmfreadwrite -lmfuuid
+// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -luuid -lcomdlg32 -lmsimg32 -lmfplat -lmfreadwrite -lmfuuid -ld3d11
 // @license         MIT
 // ==/WindhawkMod==
 
@@ -99,6 +99,8 @@ moves them all; **Move this widget left** and **right** change their order.
   Screen or Win+Shift+R, so Windows handles them as usual.
 - The tool, color and thickness you used last are remembered.
 - A recording closed without copying or saving it is deleted; the window asks first.
+- Windhawk 1.x runs mods in a 32-bit process, short on memory for video: there, an area bigger
+  than 2560 × 1440 is recorded scaled down to that many pixels. Windhawk 2.0 records up to 4K.
 */
 // ==/WindhawkModReadme==
 
@@ -138,6 +140,7 @@ moves them all; **Move this widget left** and **right** change their order.
 #include <sddl.h>
 #include <commdlg.h>
 #include <codecapi.h>
+#include <d3d11.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -2564,6 +2567,15 @@ public:
     ~Com() { Reset(); }
     Com(const Com&) = delete;
     Com& operator=(const Com&) = delete;
+    Com(Com&& other) noexcept : pointer_(other.pointer_) { other.pointer_ = nullptr; }
+    Com& operator=(Com&& other) noexcept {
+        if (this != &other) {
+            Reset();
+            pointer_ = other.pointer_;
+            other.pointer_ = nullptr;
+        }
+        return *this;
+    }
 
     T* operator->() const { return pointer_; }
     T* Get() const { return pointer_; }
@@ -2621,9 +2633,12 @@ private:
 };
 
 // The size a video of an area of the screen is recorded at: the same, unless it's more than the
-// encoder takes (bigger than 4K), and a whole number of pixel pairs, as H.264 needs.
+// encoder takes (bigger than 4K), and a whole number of pixel pairs, as H.264 needs. In a 32-bit
+// Windhawk (1.x), whose memory runs out around 2 GB, recording, trimming and saving a video bigger
+// than 2560 × 1440 wouldn't fit: bigger areas are recorded at that many pixels.
 SIZE VideoSizeFor(int width, int height) {
-    double shrink = std::min({1.0, std::sqrt(3840.0 * 2160.0 / ((double)width * height)), 4096.0 / width, 4096.0 / height});
+    double most = sizeof(void*) == 4 ? 2560.0 * 1440.0 : 3840.0 * 2160.0;
+    double shrink = std::min({1.0, std::sqrt(most / ((double)width * height)), 4096.0 / width, 4096.0 / height});
     return {std::max(2, (int)(width * shrink) & ~1), std::max(2, (int)(height * shrink) & ~1)};
 }
 
@@ -2635,8 +2650,10 @@ public:
         width_ = width;
         height_ = height;
         Com<IMFAttributes> attributes;
-        if (FAILED(MFCreateAttributes(attributes.Put(), 1)) ||
+        if (FAILED(MFCreateAttributes(attributes.Put(), 2)) ||
             FAILED(attributes->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4)) ||
+            // Frames go straight through the encoder, not held to look ahead: a third of the memory.
+            FAILED(attributes->SetUINT32(MF_LOW_LATENCY, TRUE)) ||
             FAILED(MFCreateSinkWriterFromURL(path.c_str(), nullptr, attributes.Get(), writer_.Put()))) {
             return false;
         }
@@ -2700,24 +2717,74 @@ private:
     int height_ = 0;
 };
 
+// Direct3D 11, for decoding video on the graphics card; null where there's none to use.
+Com<IMFDXGIDeviceManager> VideoDeviceManager() {
+    Com<ID3D11Device> device;
+    const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+                                        D3D_FEATURE_LEVEL_9_3};
+    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, levels, ARRAYSIZE(levels),
+                                 D3D11_SDK_VERSION, device.Put(), nullptr, nullptr))) {
+        return {};
+    }
+    // The decoder uses it from threads of its own.
+    Com<ID3D10Multithread> multithread;
+    if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(multithread.Put())))) {
+        multithread->SetMultithreadProtected(TRUE);
+    }
+    UINT resetToken = 0;
+    Com<IMFDXGIDeviceManager> manager;
+    if (FAILED(MFCreateDXGIDeviceManager(&resetToken, manager.Put())) || FAILED(manager->ResetDevice(device.Get(), resetToken))) {
+        return {};
+    }
+    return manager;
+}
+
 // Reads a video file, frame by frame.
 class VideoReader {
 public:
-    bool Open(const std::wstring& path) {
-        Com<IMFAttributes> attributes;
-        if (FAILED(MFCreateAttributes(attributes.Put(), 1)) ||
-            FAILED(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, TRUE)) ||  // Converts to RGB.
-            FAILED(MFCreateSourceReaderFromURL(path.c_str(), attributes.Get(), reader_.Put()))) {
+    // The size of a video's picture, without decoding any of it. False if it can't be read.
+    static bool Probe(const std::wstring& path, SIZE& size) {
+        Com<IMFSourceReader> reader;
+        Com<IMFMediaType> type;
+        UINT32 width = 0;
+        UINT32 height = 0;
+        if (FAILED(MFCreateSourceReaderFromURL(path.c_str(), nullptr, reader.Put())) ||
+            FAILED(reader->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, type.Put())) ||
+            FAILED(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height)) || width == 0 || height == 0) {
             return false;
         }
-        reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
-        reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+        size = {(LONG)width, (LONG)height};
+        MFVideoArea area;
+        if (SUCCEEDED(type->GetBlob(MF_MT_MINIMUM_DISPLAY_APERTURE, (UINT8*)&area, sizeof(area), nullptr)) && area.Area.cx > 0 &&
+            area.Area.cy > 0) {
+            size = area.Area;
+        }
+        return true;
+    }
+
+    // Opens the video. With a size, Windows scales the frames to it as they're decoded (much
+    // cheaper than scaling them after); without, they keep their own. hardware decodes on the
+    // graphics card where there is one, else on the processor.
+    bool Open(const std::wstring& path, SIZE size = {}, bool hardware = false) {
+        Close();
+        if (hardware) {
+            manager_ = VideoDeviceManager();
+        }
+        Com<IMFAttributes> attributes;
         Com<IMFMediaType> type;
-        if (FAILED(MFCreateMediaType(type.Put())) || FAILED(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) ||
-            FAILED(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
-            FAILED(reader_->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get())) ||
-            !ReadFormat()) {
-            return false;
+        if (FAILED(MFCreateAttributes(attributes.Put(), 2)) ||
+            // Converts to RGB (and scales) with Windows' video processor. (Not low latency, which
+            // would save memory but skips frames.)
+            FAILED(attributes->SetUINT32(MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, TRUE)) ||
+            (manager_ && FAILED(attributes->SetUnknown(MF_SOURCE_READER_D3D_MANAGER, manager_.Get()))) ||
+            FAILED(MFCreateSourceReaderFromURL(path.c_str(), attributes.Get(), reader_.Put())) ||
+            FAILED(reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE)) ||
+            FAILED(reader_->SetStreamSelection((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE)) || FAILED(MFCreateMediaType(type.Put())) ||
+            FAILED(type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video)) || FAILED(type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32)) ||
+            (size.cx > 0 && size.cy > 0 && FAILED(MFSetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, size.cx, size.cy))) ||
+            FAILED(reader_->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get())) || !ReadFormat()) {
+            // Without the graphics card, then.
+            return manager_ ? Open(path, size, false) : (Close(), false);
         }
         PROPVARIANT duration;
         PropVariantInit(&duration);
@@ -2727,23 +2794,34 @@ public:
         PropVariantClear(&duration);
         // Times count from the first frame. The encoder's reordered (B) frames can put it a frame or
         // two in.
-        std::vector<BYTE> first;
         LONGLONG time = 0;
-        if (duration_ <= 0 || !Read(first, time)) {
-            return false;
+        if (duration_ <= 0 || !Next(time)) {
+            return manager_ ? Open(path, size, false) : (Close(), false);
         }
         origin_ = time;
         return Seek(0);
     }
 
-    void Close() { reader_.Reset(); }
+    void Close() {
+        sample_.Reset();
+        reader_.Reset();
+        manager_.Reset();
+        duration_ = 0;
+        origin_ = 0;
+    }
 
     int Width() const { return width_; }
     int Height() const { return height_; }
     LONGLONG Duration() const { return duration_; }
+    bool IsOpen() const { return (bool)reader_; }
+    bool OnGraphicsCard() const { return (bool)manager_; }
 
     // Goes back or ahead to the key frame at or before the time; reading goes on from there.
     bool Seek(LONGLONG time) {
+        sample_.Reset();
+        if (!reader_) {
+            return false;
+        }
         PROPVARIANT position;
         PropVariantInit(&position);
         position.vt = VT_I8;
@@ -2751,27 +2829,38 @@ public:
         return SUCCEEDED(reader_->SetCurrentPosition(GUID_NULL, position));
     }
 
-    // Reads the next frame into the pixels (Width() × Height()), with the time it shows from.
-    // False at the end of the video, or if it can't be read.
-    bool Read(std::vector<BYTE>& pixels, LONGLONG& time) {
+    // Reads the next frame, with the time it shows from; Pixels copies it out. False at the end of
+    // the video, or if it can't be read.
+    bool Next(LONGLONG& time) {
+        sample_.Reset();
+        if (!reader_) {
+            return false;
+        }
         while (true) {
             DWORD flags = 0;
             LONGLONG timestamp = 0;
-            Com<IMFSample> sample;
-            if (FAILED(reader_->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, &flags, &timestamp, sample.Put())) ||
+            if (FAILED(reader_->ReadSample((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, nullptr, &flags, &timestamp, sample_.Put())) ||
                 (flags & (MF_SOURCE_READERF_ERROR | MF_SOURCE_READERF_ENDOFSTREAM))) {
+                sample_.Reset();
                 return false;
             }
             if ((flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED) && !ReadFormat()) {
+                sample_.Reset();
                 return false;
             }
-            if (!sample) {
-                continue;  // A gap in the stream.
+            if (sample_) {
+                time = timestamp - origin_;
+                return true;
             }
-            time = timestamp - origin_;
-            return CopyFrame(sample.Get(), pixels);
+            // A gap in the stream.
         }
     }
+
+    // Copies the frame read last into the pixels (Width() × Height(), top row first).
+    bool Pixels(std::vector<BYTE>& pixels) { return sample_ && CopyFrame(sample_.Get(), pixels); }
+
+    // Reads the next frame into the pixels.
+    bool Read(std::vector<BYTE>& pixels, LONGLONG& time) { return Next(time) && Pixels(pixels); }
 
 private:
     // The frames' size, and where the picture is in them: decoded frames can be rounded up to a
@@ -2816,6 +2905,7 @@ private:
                 memcpy(pixels.data() + (size_t)y * width_ * 4, firstRow + (LONG_PTR)(top_ + y) * pitch + left_ * 4, (size_t)width_ * 4);
             }
         };
+        // Frames on the graphics card come back to memory here.
         Com<IMF2DBuffer> buffer2d;
         BYTE* firstRow = nullptr;
         LONG pitch = 0;
@@ -2838,7 +2928,9 @@ private:
         return fits;
     }
 
+    Com<IMFDXGIDeviceManager> manager_;  // First: kept until the reader is gone.
     Com<IMFSourceReader> reader_;
+    Com<IMFSample> sample_;  // The frame read last.
     LONGLONG duration_ = 0;
     LONGLONG origin_ = 0;  // The first frame's time in the file.
     int frameWidth_ = 0;
@@ -2857,7 +2949,8 @@ bool CopyVideoPart(const std::wstring& source, const std::wstring& target, LONGL
                    const std::function<bool(double progress)>& progress) {
     VideoReader reader;
     VideoWriter writer;
-    if (!reader.Open(source) || !writer.Open(target, reader.Width() & ~1, reader.Height() & ~1) || !reader.Seek(start)) {
+    // On the graphics card where there is one: faster, and less memory once its driver is loaded.
+    if (!reader.Open(source, {}, true) || !writer.Open(target, reader.Width() & ~1, reader.Height() & ~1) || !reader.Seek(start)) {
         writer.Finish();
         return false;
     }
@@ -4959,7 +5052,9 @@ private:
 
 // ---------------------------------------------------------------------------
 // The trim window, after recording: plays the recording, trims its start and end with the handles
-// on the strip of frames under it, and copies or saves it.
+// on the strip of frames under it, and copies or saves it. Frames are decoded at the size they're
+// shown, on the graphics card where there is one. Finding a frame goes a step at a time between
+// mouse moves: the nearest key frame shows at once, then the exact frame.
 
 // A time as minutes, seconds and tenths: 1:05.3.
 std::wstring FormatTime(LONGLONG ticks) {
@@ -4969,15 +5064,28 @@ std::wstring FormatTime(LONGLONG ticks) {
     return text;
 }
 
-// The frame, scaled to the size, for drawing quickly.
-std::unique_ptr<gp::Bitmap> ScaledFrame(const std::vector<BYTE>& pixels, int width, int height, int toWidth, int toHeight) {
-    gp::Bitmap source(width, height, width * 4, PixelFormat32bppRGB, (BYTE*)pixels.data());
-    auto scaled = std::make_unique<gp::Bitmap>(std::max(1, toWidth), std::max(1, toHeight), PixelFormat32bppPARGB);
-    gp::Graphics graphics(scaled.get());
-    graphics.SetInterpolationMode(gp::InterpolationModeHighQualityBilinear);
-    graphics.SetPixelOffsetMode(gp::PixelOffsetModeHalf);
-    graphics.DrawImage(&source, gp::Rect(0, 0, toWidth, toHeight), 0, 0, width, height, gp::UnitPixel);
-    return scaled;
+// Draws pixels (top row first) at their own size, cut to the width if it's less.
+void DrawPixels(HDC dc, const std::vector<BYTE>& pixels, int width, int height, int x, int y, int drawWidth) {
+    if (width <= 0 || height <= 0 || pixels.size() < (size_t)width * height * 4) {
+        return;
+    }
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(info.bmiHeader);
+    info.bmiHeader.biWidth = width;
+    info.bmiHeader.biHeight = -height;
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+    drawWidth = std::min(drawWidth, width);
+    StretchDIBits(dc, x, y, drawWidth, height, 0, 0, drawWidth, height, pixels.data(), &info, DIB_RGB_COLORS, SRCCOPY);
+}
+
+double Milliseconds() {
+    LARGE_INTEGER counter;
+    LARGE_INTEGER frequency;
+    QueryPerformanceCounter(&counter);
+    QueryPerformanceFrequency(&frequency);
+    return counter.QuadPart * 1000.0 / frequency.QuadPart;
 }
 
 class TrimWindow {
@@ -4991,10 +5099,13 @@ public:
     std::function<std::wstring()> saveFolder;
 
     // The recording is deleted when the window goes.
-    TrimWindow(std::wstring path, const RECT& nearRect) : path_(std::move(path)), nearRect_(nearRect) {}
+    TrimWindow(std::wstring path, const RECT& nearRect) : path_(std::move(path)), nearRect_(nearRect) {
+        InitializeSRWLock(&thumbnailLock_);
+    }
 
     ~TrimWindow() {
         onClosed = nullptr;
+        StopThumbnails();
         if (exportThread_) {
             exportCancel_ = true;
             WaitForSingleObject(exportThread_, INFINITE);
@@ -5007,24 +5118,24 @@ public:
             DestroyWindow(hwnd_);
         }
         reader_.Close();
-        thumbnailReader_.Close();
         DeleteFileW(path_.c_str());
     }
 
     // Opens the recording and shows the window on the display of the area. False if the recording
     // can't be read.
     bool Create() {
-        if (!mediaFoundation_.Started() || !reader_.Open(path_) || !thumbnailReader_.Open(path_)) {
+        if (!mediaFoundation_.Started() || !VideoReader::Probe(path_, videoSize_)) {
             return false;
         }
-        duration_ = reader_.Duration();
-        end_ = duration_;
         HMONITOR monitor = MonitorFromRect(&nearRect_, MONITOR_DEFAULTTONEAREST);
         UINT dpiX = 96;
         UINT dpiY = 96;
         GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &dpiX, &dpiY);
         scale_ = dpiX / 96.0f;
         LayOut();
+        if (!OpenPreview()) {
+            return false;
+        }
         RECT frame{0, 0, (LONG)std::lround((kPad * 2 + kContentWidth) * scale_), (LONG)std::lround(clientHeight_)};
         AdjustWindowRectExForDpi(&frame, kStyle, FALSE, 0, dpiX);
         MONITORINFO info{sizeof(info)};
@@ -5041,8 +5152,8 @@ public:
             return false;
         }
         UpdateTitleBar();
-        ShowFrameAt(0);
-        PostMessageW(hwnd_, kThumbnailMessage, 0, 0);
+        DecodeToward(0, 1000);
+        StartThumbnails();
         ShowWindow(hwnd_, SW_SHOW);
         SetForegroundWindow(hwnd_);
         return true;
@@ -5094,18 +5205,18 @@ public:
             case WM_TIMER:
                 if (wParam == kPlayTimer) {
                     OnPlayTimer();
+                } else if (wParam == kDecodeTimer && DecodeToward(wantedTime_, 12)) {
+                    // Timers come only when nothing else is waiting, so the mouse and painting go
+                    // first.
+                    KillTimer(hwnd_, kDecodeTimer);
                 }
                 return true;
-            case kShowFrameMessage:
-                framePending_ = false;
-                ShowFrameAt(wantedTime_);
-                return true;
             case kThumbnailMessage:
-                MakeNextThumbnail();
+                Invalidate(film_);
                 return true;
             case kExportProgressMessage:
                 exportPercent_ = (int)wParam;
-                InvalidateRect(hwnd_, nullptr, FALSE);
+                InvalidateControls();
                 return true;
             case kExportDoneMessage:
                 OnExportDone();
@@ -5116,8 +5227,10 @@ public:
                 SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top, suggested->right - suggested->left,
                              suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
                 LayOut();
-                UpdatePreview();
-                PostMessageW(hwnd_, kThumbnailMessage, 0, 0);  // At the new size.
+                // Frames and thumbnails at the new size.
+                OpenPreview();
+                DecodeToward(playhead_, 1000);
+                StartThumbnails();
                 InvalidateRect(hwnd_, nullptr, FALSE);
                 return true;
             }
@@ -5135,6 +5248,7 @@ public:
                 }
                 return true;
             case WM_NCDESTROY:
+                StopThumbnails();
                 if (onClosed) {
                     onClosed();
                 }
@@ -5151,10 +5265,10 @@ private:
 
     static constexpr DWORD kStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     static constexpr UINT kThumbnailMessage = WM_APP + 1;
-    static constexpr UINT kShowFrameMessage = WM_APP + 2;
     static constexpr UINT kExportProgressMessage = WM_APP + 3;
     static constexpr UINT kExportDoneMessage = WM_APP + 4;
     static constexpr UINT_PTR kPlayTimer = 1;
+    static constexpr UINT_PTR kDecodeTimer = 2;
     // The layout, in pixels at 100% scaling.
     static constexpr float kPad = 16;
     static constexpr float kContentWidth = 720;
@@ -5164,6 +5278,9 @@ private:
     static constexpr float kButtonWidth = 100;
     static constexpr LONGLONG kFrameTicks = kTicksPerSecond / kRecordingFps;
     static constexpr LONGLONG kShortest = kTicksPerSecond / 10;  // The shortest a trimmed recording can be.
+    // Frames this close before the one wanted are copied out as they're read; ones before them
+    // are only decoded.
+    static constexpr LONGLONG kCopyWindow = kTicksPerSecond / 5;
 
     int Px(float value) const { return (int)std::lround(value * scale_); }
 
@@ -5176,12 +5293,12 @@ private:
 
     void LayOut() {
         float s = scale_;
-        float aspect = (float)reader_.Width() / std::max(1, reader_.Height());
+        float aspect = (float)videoSize_.cx / std::max<LONG>(1, videoSize_.cy);
         preview_ = gp::RectF(kPad * s, kPad * s, kContentWidth * s, std::clamp(kContentWidth / aspect, 240.0f, 480.0f) * s);
         // The picture, fitted into the preview (small ones up to twice their size).
-        float fit = std::min({preview_.Width / reader_.Width(), preview_.Height / reader_.Height(), 2.0f});
-        float width = std::round(reader_.Width() * fit);
-        float height = std::round(reader_.Height() * fit);
+        float fit = std::min({preview_.Width / videoSize_.cx, preview_.Height / videoSize_.cy, 2.0f});
+        float width = std::max(2.0f, std::round(videoSize_.cx * fit));
+        float height = std::max(2.0f, std::round(videoSize_.cy * fit));
         picture_ = gp::RectF(std::round(preview_.X + (preview_.Width - width) / 2), std::round(preview_.Y + (preview_.Height - height) / 2),
                              width, height);
         track_ = gp::RectF(kPad * s, preview_.GetBottom() + 16 * s, kContentWidth * s, kTrackHeight * s);
@@ -5193,9 +5310,9 @@ private:
         copy_ = gp::RectF(save_.X - (8 + kButtonWidth) * s, row, kButtonWidth * s, kRowHeight * s);
         clientHeight_ = row + (kRowHeight + kPad) * s;
         // Thumbnails along the strip, as wide as the picture's shape makes them.
-        thumbnailWidth_ = std::clamp(film_.Height * aspect, 24 * s, 160 * s);
+        thumbnailWidth_ = std::max(1, (int)std::lround(std::clamp(film_.Height * aspect, 24 * s, 160 * s)));
+        thumbnailHeight_ = std::max(1, (int)film_.Height);
         thumbnailCount_ = std::max(1, (int)std::ceil(film_.Width / thumbnailWidth_));
-        thumbnails_.clear();
     }
 
     float XFor(LONGLONG time) const { return film_.X + film_.Width * (float)time / std::max<LONGLONG>(1, duration_); }
@@ -5212,79 +5329,206 @@ private:
 
     bool Trimmed() const { return start_ > kFrameTicks / 2 || end_ < duration_ - kFrameTicks / 2; }
 
+    void Invalidate(const gp::RectF& rect) {
+        RECT area{(LONG)std::floor(rect.X), (LONG)std::floor(rect.Y), (LONG)std::ceil(rect.GetRight()), (LONG)std::ceil(rect.GetBottom())};
+        InvalidateRect(hwnd_, &area, FALSE);
+    }
+
+    // The strip, the times under it and the row of controls: what moving the playhead or a handle
+    // changes.
+    void InvalidateControls() {
+        RECT client;
+        GetClientRect(hwnd_, &client);
+        Invalidate(gp::RectF(0, track_.Y - 8 * scale_, (float)client.right, client.bottom - track_.Y + 8 * scale_));
+    }
+
     // ---- Frames
 
-    // Shows the frame at the time: the last one that starts at or before it.
-    void ShowFrameAt(LONGLONG time) {
-        time = std::clamp<LONGLONG>(time, 0, duration_);
-        // Frames are read in order: go back to a key frame unless the one wanted is just ahead.
-        if (!(haveCurrent_ && time >= currentTime_ && time < currentTime_ + kTicksPerSecond)) {
-            reader_.Seek(time);
+    // Opens the reader for the picture, at its size. keepFrame keeps the frame on screen until the
+    // next one is found.
+    bool OpenPreview(bool keepFrame = false) {
+        reader_.Close();
+        if (!keepFrame) {
             haveCurrent_ = false;
-            haveAhead_ = false;
         }
-        bool changed = false;
-        while (true) {
-            if (!haveAhead_) {
-                if (!reader_.Read(aheadPixels_, aheadTime_)) {
-                    break;  // The end: the current frame is the last.
-                }
-                haveAhead_ = true;
+        haveAhead_ = false;
+        positioned_ = false;
+        atEnd_ = false;
+        if (!reader_.Open(path_, {(LONG)picture_.Width, (LONG)picture_.Height}, true)) {
+            return false;
+        }
+        duration_ = reader_.Duration();
+        if (end_ == 0 || end_ > duration_) {
+            end_ = duration_;
+        }
+        return true;
+    }
+
+    // Works toward showing the frame at the time (the last one starting at or before it), for
+    // about the time budget. Returns whether it's showing.
+    bool DecodeToward(LONGLONG target, double budget) {
+        if (!reader_.IsOpen()) {
+            return true;  // While saving.
+        }
+        target = std::clamp<LONGLONG>(target, 0, duration_);
+        if (target != stepTarget_) {
+            stepTarget_ = target;
+            copyFrom_ = target - kCopyWindow;
+        }
+        double deadline = Milliseconds() + budget;
+        do {
+            if (Step(target)) {
+                return true;
             }
-            if (haveCurrent_ && aheadTime_ > time) {
-                break;
-            }
+        } while (Milliseconds() < deadline);
+        return false;
+    }
+
+    // One frame's work toward the target. Returns whether the frame shown is it.
+    bool Step(LONGLONG target) {
+        // The frame shown is it: the next one starts after the target, or there's none, or none
+        // comes before the target.
+        if (haveCurrent_ && ((currentTime_ <= target && ((haveAhead_ && aheadTime_ > target) || (atEnd_ && currentIsLast_))) ||
+                             target == firstAfter_)) {
+            return true;
+        }
+        // The frame read ahead is at or before it: show that.
+        if (haveAhead_ && aheadTime_ <= target) {
             std::swap(currentPixels_, aheadPixels_);
             currentTime_ = aheadTime_;
-            haveCurrent_ = true;
             haveAhead_ = false;
-            changed = true;
+            currentIsLast_ = true;
+            Invalidate(picture_);
+            return false;
         }
-        if (changed) {
-            UpdatePreview();
-            InvalidateRect(hwnd_, nullptr, FALSE);
+        // Behind where reading has got to, or well ahead of it: go to the key frame before it, and
+        // show that right away.
+        if (!positioned_ || target < readTime_ || target > readTime_ + kTicksPerSecond) {
+            reader_.Seek(target);
+            haveAhead_ = false;
+            atEnd_ = false;
+            firstAfter_ = -1;
+            LONGLONG time = 0;
+            if (!reader_.Read(currentPixels_, time)) {
+                positioned_ = false;
+                atEnd_ = true;
+                currentIsLast_ = false;
+                return true;  // Nothing more to find.
+            }
+            positioned_ = true;
+            readTime_ = time;
+            currentTime_ = time;
+            if (time > target) {
+                firstAfter_ = target;  // The video has nothing earlier.
+            }
+            haveCurrent_ = true;
+            currentIsLast_ = true;
+            Invalidate(picture_);
+            return false;
         }
+        // Read on.
+        LONGLONG previous = readTime_;
+        LONGLONG time = 0;
+        if (!reader_.Next(time)) {
+            atEnd_ = true;
+            if (currentIsLast_) {
+                return true;
+            }
+            // The last frame was passed over without copying it: go back for it.
+            copyFrom_ = std::min(copyFrom_, previous);
+            positioned_ = false;
+            return false;
+        }
+        readTime_ = time;
+        if (time > target) {
+            if (currentIsLast_) {
+                if (reader_.Pixels(aheadPixels_)) {
+                    aheadTime_ = time;
+                    haveAhead_ = true;
+                }
+                currentIsLast_ = false;
+                return true;
+            }
+            // The frame before this one is it, but it was passed over: go back for it.
+            copyFrom_ = std::min(copyFrom_, previous);
+            positioned_ = false;
+            return false;
+        }
+        if (time >= copyFrom_ && reader_.Pixels(currentPixels_)) {
+            currentTime_ = time;
+            currentIsLast_ = true;
+            Invalidate(picture_);
+        } else {
+            currentIsLast_ = false;
+        }
+        return false;
     }
 
-    // Shows the frame at the time once the window is free, skipping any asked for in between.
+    // Shows the frame at the time: a little work now, and the rest between messages.
     void RequestFrame(LONGLONG time) {
         wantedTime_ = time;
-        if (!framePending_) {
-            framePending_ = true;
-            PostMessageW(hwnd_, kShowFrameMessage, 0, 0);
+        if (DecodeToward(time, 8)) {
+            KillTimer(hwnd_, kDecodeTimer);
+        } else {
+            SetTimer(hwnd_, kDecodeTimer, USER_TIMER_MINIMUM, nullptr);
         }
     }
 
-    void UpdatePreview() {
-        if (haveCurrent_) {
-            frameBitmap_ = ScaledFrame(currentPixels_, reader_.Width(), reader_.Height(), (int)picture_.Width, (int)picture_.Height);
+    // ---- Thumbnails, made on a thread of their own
+
+    void StartThumbnails() {
+        StopThumbnails();
+        thumbnailTimes_.clear();
+        for (int i = 0; i < thumbnailCount_; i++) {
+            thumbnailTimes_.push_back(TimeAt(film_.X + (i + 0.5f) * thumbnailWidth_));
+        }
+        AcquireSRWLockExclusive(&thumbnailLock_);
+        thumbnails_.assign(thumbnailCount_, {});
+        thumbnailsWidth_ = thumbnailWidth_;
+        thumbnailsHeight_ = thumbnailHeight_;
+        ReleaseSRWLockExclusive(&thumbnailLock_);
+        thumbnailWindow_ = hwnd_;
+        thumbnailCancel_ = false;
+        thumbnailThread_ = CreateThread(nullptr, 0, ThumbnailProc, this, 0, nullptr);
+    }
+
+    void StopThumbnails() {
+        if (thumbnailThread_) {
+            thumbnailCancel_ = true;
+            WaitForSingleObject(thumbnailThread_, INFINITE);
+            CloseHandle(thumbnailThread_);
+            thumbnailThread_ = nullptr;
         }
     }
 
-    // Makes the next thumbnail for the strip, one at a time so the window stays responsive.
-    void MakeNextThumbnail() {
-        size_t index = thumbnails_.size();
-        if (index >= (size_t)thumbnailCount_) {
-            return;
+    static DWORD WINAPI ThumbnailProc(void* parameter) {
+        auto self = (TrimWindow*)parameter;
+        ComThread com;
+        MediaFoundation mediaFoundation;
+        VideoReader reader;
+        if (!mediaFoundation.Started() || !reader.Open(self->path_, {self->thumbnailsWidth_, self->thumbnailsHeight_}, true)) {
+            return 0;
         }
-        LONGLONG time = TimeAt(film_.X + (index + 0.5f) * thumbnailWidth_);
-        std::vector<BYTE> pixels;
-        std::vector<BYTE> next;
-        LONGLONG frameTime = 0;
-        bool have = false;
-        thumbnailReader_.Seek(time);
-        while (thumbnailReader_.Read(next, frameTime) && !(have && frameTime > time)) {
-            pixels.swap(next);
-            have = true;
+        for (size_t i = 0; i < self->thumbnailTimes_.size() && !self->thumbnailCancel_; i++) {
+            // The last frame at or before the time; ones well before it are only decoded.
+            LONGLONG target = self->thumbnailTimes_[i];
+            std::vector<BYTE> pixels;
+            LONGLONG time = 0;
+            bool have = false;
+            reader.Seek(target);
+            while (!self->thumbnailCancel_ && reader.Next(time) && !(have && time > target)) {
+                if (!have || time >= target - kCopyWindow) {
+                    have = reader.Pixels(pixels) || have;
+                }
+            }
+            if (have && reader.Width() == self->thumbnailsWidth_ && reader.Height() == self->thumbnailsHeight_) {
+                AcquireSRWLockExclusive(&self->thumbnailLock_);
+                self->thumbnails_[i] = std::move(pixels);
+                ReleaseSRWLockExclusive(&self->thumbnailLock_);
+                PostMessageW(self->thumbnailWindow_, kThumbnailMessage, 0, 0);
+            }
         }
-        thumbnails_.push_back(have ? ScaledFrame(pixels, thumbnailReader_.Width(), thumbnailReader_.Height(),
-                                                 (int)std::ceil(thumbnailWidth_), (int)track_.Height)
-                                   : nullptr);
-        RECT strip = {(LONG)track_.X, (LONG)track_.Y, (LONG)std::ceil(track_.GetRight()), (LONG)std::ceil(track_.GetBottom())};
-        InvalidateRect(hwnd_, &strip, FALSE);
-        if (thumbnails_.size() < (size_t)thumbnailCount_) {
-            PostMessageW(hwnd_, kThumbnailMessage, 0, 0);
-        }
+        return 0;
     }
 
     // ---- Playing
@@ -5304,35 +5548,32 @@ private:
         }
         playing_ = true;
         playFrom_ = playhead_;
-        QueryPerformanceCounter(&playOrigin_);
+        playOrigin_ = Milliseconds();
+        KillTimer(hwnd_, kDecodeTimer);
         SetTimer(hwnd_, kPlayTimer, 10, nullptr);
-        ShowFrameAt(playhead_);
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        DecodeToward(playhead_, 100);
+        InvalidateControls();
     }
 
     void StopPlaying() {
         if (playing_) {
             playing_ = false;
             KillTimer(hwnd_, kPlayTimer);
-            InvalidateRect(hwnd_, nullptr, FALSE);
+            InvalidateControls();
         }
     }
 
     void OnPlayTimer() {
-        LARGE_INTEGER now;
-        LARGE_INTEGER frequency;
-        QueryPerformanceCounter(&now);
-        QueryPerformanceFrequency(&frequency);
-        LONGLONG time = playFrom_ + (LONGLONG)((now.QuadPart - playOrigin_.QuadPart) * (double)kTicksPerSecond / frequency.QuadPart);
+        LONGLONG time = playFrom_ + (LONGLONG)((Milliseconds() - playOrigin_) * (kTicksPerSecond / 1000));
         if (time >= end_) {
             playhead_ = end_;
-            ShowFrameAt(LastFrameBefore(end_));
             StopPlaying();
+            RequestFrame(LastFrameBefore(end_));
         } else {
             playhead_ = time;
-            ShowFrameAt(time);
+            DecodeToward(time, 25);
         }
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
     }
 
     // Moves the playhead and shows the frame there.
@@ -5340,24 +5581,24 @@ private:
         StopPlaying();
         playhead_ = std::clamp<LONGLONG>(time, 0, duration_);
         RequestFrame(playhead_);
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
     }
 
     void SetStart(LONGLONG time) {
         start_ = std::clamp<LONGLONG>(time, 0, std::max<LONGLONG>(0, end_ - kShortest));
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
     }
 
     void SetEnd(LONGLONG time) {
         end_ = std::clamp<LONGLONG>(time, std::min(duration_, start_ + kShortest), duration_);
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
     }
 
     // ---- Mouse and keyboard
 
     Button ButtonAt(POINT point) const {
         gp::PointF at((float)point.x, (float)point.y);
-        if (play_.Contains(at)) {
+        if (!exporting_ && play_.Contains(at)) {
             return Button::Play;
         }
         if (!exporting_ && copy_.Contains(at)) {
@@ -5372,7 +5613,7 @@ private:
     Drag DragAt(POINT point) const {
         gp::RectF area = track_;
         area.Inflate(0, 8 * scale_);
-        if (!area.Contains(gp::PointF((float)point.x, (float)point.y))) {
+        if (exporting_ || !area.Contains(gp::PointF((float)point.x, (float)point.y))) {
             return Drag::None;
         }
         // The handles, with a little room around them; the nearer one when they're close.
@@ -5401,7 +5642,7 @@ private:
     void SetHover(Button button) {
         if (button != hover_) {
             hover_ = button;
-            InvalidateRect(hwnd_, nullptr, FALSE);
+            InvalidateControls();
         }
     }
 
@@ -5409,7 +5650,7 @@ private:
         Button button = ButtonAt(point);
         if (button != Button::None) {
             pressed_ = button;
-            InvalidateRect(hwnd_, nullptr, FALSE);
+            InvalidateControls();
             return;
         }
         drag_ = DragAt(point);
@@ -5431,7 +5672,7 @@ private:
         Button pressed = pressed_;
         pressed_ = Button::None;
         drag_ = Drag::None;
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
         if (pressed != Button::None && pressed == ButtonAt(point)) {
             Activate(pressed);
         }
@@ -5456,10 +5697,13 @@ private:
             case Drag::None:
                 break;
         }
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
     }
 
     void OnKeyDown(UINT key) {
+        if (exporting_) {
+            return;
+        }
         bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
         LONGLONG step = shift ? kTicksPerSecond : kFrameTicks;
@@ -5536,10 +5780,17 @@ private:
         }
         if (folder.empty() || GetFileAttributesW(folder.c_str()) == INVALID_FILE_ATTRIBUTES) {
             status_ = save ? L"Couldn't open the folder to save in" : L"Couldn't make a copy";
-            InvalidateRect(hwnd_, nullptr, FALSE);
+            InvalidateControls();
             return;
         }
         exportTarget_ = NewFileName(folder, L"Screen Recording", L".mp4");
+        // Saving decodes and encodes the whole picture, which takes a lot of memory: the preview
+        // gives its back meanwhile (in a 32-bit Windhawk, there isn't room for both).
+        KillTimer(hwnd_, kDecodeTimer);
+        StopThumbnails();
+        reader_.Close();
+        positioned_ = false;
+        haveAhead_ = false;
         exportSave_ = save;
         exportWhole_ = !Trimmed();
         exportStart_ = start_;
@@ -5551,8 +5802,8 @@ private:
         exportThread_ = CreateThread(nullptr, 0, ExportProc, this, 0, nullptr);
         exporting_ = exportThread_ != nullptr;
         status_.clear();
-        SetHover(Button::None);
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        hover_ = Button::None;
+        InvalidateControls();
     }
 
     static DWORD WINAPI ExportProc(void* parameter) {
@@ -5583,6 +5834,16 @@ private:
         CloseHandle(exportThread_);
         exportThread_ = nullptr;
         exporting_ = false;
+        OpenPreview(true);
+        bool missing = false;
+        AcquireSRWLockShared(&thumbnailLock_);
+        for (const std::vector<BYTE>& thumbnail : thumbnails_) {
+            missing = missing || thumbnail.empty();
+        }
+        ReleaseSRWLockShared(&thumbnailLock_);
+        if (missing) {
+            StartThumbnails();
+        }
         bool ok = exportOk_;
         if (!ok) {
             DeleteFileW(exportTarget_.c_str());
@@ -5596,11 +5857,16 @@ private:
             copied_ = copied_ || ok;
             status_ = ok ? L"Copied" : L"Couldn't copy it";
         }
-        InvalidateRect(hwnd_, nullptr, FALSE);
+        InvalidateControls();
         if (onExported) {
             RECT where;
             GetWindowRect(hwnd_, &where);
-            onExported(exportSave_, ok, exportTarget_, frameBitmap_.get(), where);
+            if (haveCurrent_) {
+                gp::Bitmap frame(reader_.Width(), reader_.Height(), reader_.Width() * 4, PixelFormat32bppRGB, currentPixels_.data());
+                onExported(exportSave_, ok, exportTarget_, &frame, where);
+            } else {
+                onExported(exportSave_, ok, exportTarget_, nullptr, where);
+            }
         }
     }
 
@@ -5614,45 +5880,47 @@ private:
         HDC memory = CreateCompatibleDC(dc);
         HBITMAP bitmap = CreateCompatibleBitmap(dc, client.right, client.bottom);
         HGDIOBJ previous = SelectObject(memory, bitmap);
-        PaintTo(memory, client);
-        BitBlt(dc, 0, 0, client.right, client.bottom, memory, 0, 0, SRCCOPY);
+        PaintTo(memory, client, paint.rcPaint);
+        int width = paint.rcPaint.right - paint.rcPaint.left;
+        int height = paint.rcPaint.bottom - paint.rcPaint.top;
+        BitBlt(dc, paint.rcPaint.left, paint.rcPaint.top, width, height, memory, paint.rcPaint.left, paint.rcPaint.top, SRCCOPY);
         SelectObject(memory, previous);
         DeleteObject(bitmap);
         DeleteDC(memory);
         EndPaint(hwnd_, &paint);
     }
 
-    // Draws the window's content into the device context.
-    void PaintTo(HDC memory, const RECT& client) {
+    // Draws the window's content into the device context: just the part that needs it.
+    void PaintTo(HDC memory, const RECT& client, const RECT& dirty) {
         Palette colors = Palette::Current();
+        lightTheme_ = AppsUseLightTheme();
         gp::Graphics graphics(memory);
+        graphics.SetClip(ToRectF(dirty));
         graphics.SetSmoothingMode(gp::SmoothingModeAntiAlias);
         graphics.SetTextRenderingHint(gp::TextRenderingHintClearTypeGridFit);
         graphics.Clear(WithAlpha(255, colors.background));
-        DrawPreview(graphics);
+        FillRoundedRect(graphics, Argb(255, 0, 0, 0), preview_, 6 * scale_);
+        FillRoundedRect(graphics, Argb(255, 24, 24, 24), film_, 4 * scale_);
+        // The frame and the thumbnails, straight from their pixels.
+        graphics.Flush(gp::FlushIntentionSync);
+        HDC dc = graphics.GetHDC();
+        if (haveCurrent_) {
+            DrawPixels(dc, currentPixels_, reader_.Width(), reader_.Height(), (int)picture_.X, (int)picture_.Y, reader_.Width());
+        }
+        AcquireSRWLockShared(&thumbnailLock_);
+        for (size_t i = 0; i < thumbnails_.size(); i++) {
+            int x = (int)film_.X + (int)i * thumbnailsWidth_;
+            DrawPixels(dc, thumbnails_[i], thumbnailsWidth_, thumbnailsHeight_, x, (int)film_.Y,
+                       std::min(thumbnailsWidth_, (int)film_.GetRight() - x));
+        }
+        ReleaseSRWLockShared(&thumbnailLock_);
+        graphics.ReleaseHDC(dc);
         DrawTrack(graphics, colors);
         DrawControls(graphics, colors);
     }
 
-    void DrawPreview(gp::Graphics& graphics) {
-        FillRoundedRect(graphics, Argb(255, 0, 0, 0), preview_, 6 * scale_);
-        if (frameBitmap_) {
-            graphics.DrawImage(frameBitmap_.get(), (INT)picture_.X, (INT)picture_.Y, (INT)frameBitmap_->GetWidth(),
-                               (INT)frameBitmap_->GetHeight());
-        }
-    }
-
     void DrawTrack(gp::Graphics& graphics, const Palette& colors) {
         float s = scale_;
-        FillRoundedRect(graphics, Argb(255, 24, 24, 24), film_, 4 * s);
-        graphics.SetClip(film_);
-        for (size_t i = 0; i < thumbnails_.size(); i++) {
-            if (thumbnails_[i]) {
-                graphics.DrawImage(thumbnails_[i].get(), (INT)(film_.X + i * thumbnailWidth_), (INT)film_.Y,
-                                   (INT)thumbnails_[i]->GetWidth(), (INT)thumbnails_[i]->GetHeight());
-            }
-        }
-        graphics.ResetClip();
         // Darkens what's cut.
         float startX = XFor(start_);
         float endX = XFor(end_);
@@ -5701,7 +5969,7 @@ private:
     void DrawButton(gp::Graphics& graphics, const Palette& colors, Button button, const gp::RectF& rect, const wchar_t* glyph,
                     const std::wstring& label, bool primary) {
         float s = scale_;
-        bool enabled = button == Button::Play || !exporting_;
+        bool enabled = !exporting_;
         bool hovered = enabled && button == hover_;
         bool pressed = hovered && button == pressed_;
         gp::Color ink = colors.foreground;
@@ -5732,7 +6000,6 @@ private:
 
     void DrawControls(gp::Graphics& graphics, const Palette& colors) {
         float s = scale_;
-        lightTheme_ = AppsUseLightTheme();
         DrawButton(graphics, colors, Button::Play, play_, playing_ ? kGlyphPause : kGlyphPlay, L"", false);
         DrawButton(graphics, colors, Button::Copy, copy_, kGlyphCopy, L"Copy", false);
         DrawButton(graphics, colors, Button::Save, save_, kGlyphSave, L"Save", true);
@@ -5762,30 +6029,44 @@ private:
     MediaFoundation mediaFoundation_;  // First: kept until the readers are gone.
     std::wstring path_;
     RECT nearRect_;
-    VideoReader reader_;
-    VideoReader thumbnailReader_;
+    SIZE videoSize_{};
+    VideoReader reader_;  // At the picture's size.
     float scale_ = 1;
     bool lightTheme_ = false;
     LONGLONG duration_ = 0;
     LONGLONG start_ = 0;
     LONGLONG end_ = 0;
     LONGLONG playhead_ = 0;
-    // The frame on screen, and the one after it, read ahead.
+    // The frame on screen; the one after it when it's been read; and how far reading has got.
     std::vector<BYTE> currentPixels_;
     std::vector<BYTE> aheadPixels_;
     LONGLONG currentTime_ = 0;
     LONGLONG aheadTime_ = 0;
+    LONGLONG readTime_ = 0;
+    LONGLONG firstAfter_ = -1;  // A time before the first frame there is.
     bool haveCurrent_ = false;
     bool haveAhead_ = false;
-    std::unique_ptr<gp::Bitmap> frameBitmap_;
+    bool currentIsLast_ = false;  // The frame on screen is the last one read.
+    bool positioned_ = false;     // Reading can go on from readTime_.
+    bool atEnd_ = false;
+    LONGLONG stepTarget_ = -1;
+    LONGLONG copyFrom_ = 0;
     LONGLONG wantedTime_ = 0;
-    bool framePending_ = false;
-    std::vector<std::unique_ptr<gp::Bitmap>> thumbnails_;
-    float thumbnailWidth_ = 1;
+    // Thumbnails, from their thread.
+    SRWLOCK thumbnailLock_;
+    std::vector<std::vector<BYTE>> thumbnails_;
+    std::vector<LONGLONG> thumbnailTimes_;
+    int thumbnailWidth_ = 1;
+    int thumbnailHeight_ = 1;
     int thumbnailCount_ = 0;
+    int thumbnailsWidth_ = 1;  // Of the thumbnails being made.
+    int thumbnailsHeight_ = 1;
+    HANDLE thumbnailThread_ = nullptr;
+    HWND thumbnailWindow_ = nullptr;
+    std::atomic<bool> thumbnailCancel_{false};
     bool playing_ = false;
     LONGLONG playFrom_ = 0;
-    LARGE_INTEGER playOrigin_{};
+    double playOrigin_ = 0;
     // Layout, in pixels.
     gp::RectF preview_;
     gp::RectF picture_;
