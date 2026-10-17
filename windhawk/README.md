@@ -19,8 +19,9 @@ other only, not with the apps.
 - **Webcam switching**: the app's **Switch without asking each time** isn't in the mod, and the mod
   doesn't use the scheduled tasks the app sets up for it. Each switch runs `pnputil.exe` as
   administrator, which may ask for permission, depending on User Account Control's settings.
-- **Icon style**: the mod's menu can switch the output and input icons to Fluent glyphs in the
-  taskbar's color (**Icon style → Fluent icons**); the app always shows the devices' Windows icons.
+- **Icon style**: the mod shows Fluent glyphs in the taskbar's color for the output and input by
+  default, and **Icon style → Windows device icons** in its menu switches to the devices' Windows
+  icons, which the app always shows.
 - **Its own settings**: the mod keeps its settings in Windhawk's storage for it, which Windhawk
   removes with the mod. The first time it runs, it imports the app's settings file
   (`%APPDATA%\AudioFlipper\settings.txt`, which it only reads), so the sections, rotation, webcam

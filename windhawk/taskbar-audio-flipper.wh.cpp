@@ -41,14 +41,12 @@ taskbar. The **Output**, **Input** and **Webcam** submenus each have a **Show on
 their section, and the settings for it: picking a device directly, which devices are in the click
 rotation, whether to switch the communications device too, and links to the Windows settings.
 
-Devices are shown with the name and icon they have in the Windows Sound control panel. To change
-them, choose **Rename or change device icons…** in the **Output** or **Input** submenu, right-click a
+Devices are shown with the name they have in the Windows Sound control panel, and a Fluent icon for
+their kind (speakers, headphones, headset, monitor or microphone) in the taskbar's color, like the
+rest of Windows 11, struck through while muted. **Icon style → Windows device icons** in the menu
+shows the icon each device has in the Sound control panel instead. To change a device's name or that
+icon, choose **Rename or change device icons…** in the **Output** or **Input** submenu, right-click a
 device, and choose **Properties**.
-
-For icons that match the rest of Windows 11, choose **Icon style → Fluent icons** in the menu: each
-device gets a Fluent glyph for its kind (speakers, headphones, headset, monitor or microphone) in the
-taskbar's color, struck through while it's muted. **Windows device icons** goes back to the Sound
-control panel's icons.
 
 ## Webcam on/off
 
@@ -2578,7 +2576,7 @@ private:
 // How the devices' icons look, chosen in the menu.
 enum class IconStyle {
     Windows = 0,  // The icons Windows shows for each device in the Sound control panel.
-    Fluent = 1,   // Glyphs from the Windows icon font, in the taskbar's color, like its own icons.
+    Fluent = 1,   // Glyphs from the Windows icon font, in the taskbar's color, like its own icons (the default).
 };
 
 // The glyph for the device's kind, or a struck-through speaker when there's no device.
@@ -2663,7 +2661,7 @@ std::shared_ptr<gp::Bitmap> IconToBitmap(HICON icon) {
 // gone before GDI+ shuts down.
 class DeviceIcons {
 public:
-    IconStyle style = IconStyle::Windows;
+    IconStyle style = IconStyle::Fluent;
 
     // The icon at the given pixel size, or null if it can't be loaded.
     gp::Bitmap* Get(const std::wstring& iconPath, int size);
@@ -2911,7 +2909,7 @@ struct Settings {
     bool showInput = false;
     bool showWebcam = false;
     int taskbarOffset = -1;
-    IconStyle iconStyle = IconStyle::Windows;
+    IconStyle iconStyle = IconStyle::Fluent;
     std::wstring webcamId;
     std::wstring webcamName;
     std::vector<std::wstring> excluded;
@@ -2980,7 +2978,7 @@ struct Settings {
         showInput = Storage::GetInt(L"ShowInput", showInput) != 0;
         showWebcam = Storage::GetInt(L"ShowWebcam", showWebcam) != 0;
         taskbarOffset = Storage::GetInt(L"TaskbarOffset", taskbarOffset);
-        iconStyle = Storage::GetInt(L"IconStyle", (int)iconStyle) == (int)IconStyle::Fluent ? IconStyle::Fluent : IconStyle::Windows;
+        iconStyle = Storage::GetInt(L"IconStyle", (int)iconStyle) == (int)IconStyle::Windows ? IconStyle::Windows : IconStyle::Fluent;
         webcamId = Storage::GetString(L"WebcamId");
         webcamName = Storage::GetString(L"WebcamName");
         for (const std::wstring& id : Split(Storage::GetString(L"Excluded"), L'\n')) {
@@ -4094,9 +4092,9 @@ private:
         AddAudioMenu(menu, eCapture);
         AddWebcamMenu(menu);
         Menu& iconStyle = menu.AddSubmenu(L"Icon style");
+        iconStyle.Add(L"Fluent icons", [this]() { SetIconStyle(IconStyle::Fluent); }, settings_.iconStyle == IconStyle::Fluent);
         iconStyle.Add(L"Windows device icons", [this]() { SetIconStyle(IconStyle::Windows); },
                       settings_.iconStyle == IconStyle::Windows);
-        iconStyle.Add(L"Fluent icons", [this]() { SetIconStyle(IconStyle::Fluent); }, settings_.iconStyle == IconStyle::Fluent);
 
         // Linking the widget with Taskbar RDP Launcher's into one, on either side; offered while that
         // mod is running (or they're linked).
