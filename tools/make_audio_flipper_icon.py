@@ -1,6 +1,6 @@
 """Draws the AudioFlipper app icon: a speaker inside two circular 'switch' arrows on a gradient tile.
 
-Usage (needs Pillow): python tools/make_icon.py src/AudioFlipper/AudioFlipper.ico preview.png
+Usage (needs Pillow): python tools/make_audio_flipper_icon.py icons/audio-flipper.ico preview.png
 """
 import math, sys
 from PIL import Image, ImageDraw

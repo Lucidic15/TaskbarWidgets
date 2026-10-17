@@ -1,6 +1,6 @@
 """Draws the RDPLauncher app icon: a row of displays, the middle one in front, on a gradient tile.
 
-Usage (needs Pillow): python tools/make_icon.py src/RDPLauncher/RDPLauncher.ico preview.png
+Usage (needs Pillow): python tools/make_rdp_launcher_icon.py icons/rdp-launcher.ico preview.png
 """
 import sys
 from PIL import Image, ImageDraw
