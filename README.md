@@ -39,7 +39,7 @@ version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the o
 
 ## Taskbar Snipper
 
-<img width="87" height="74" alt="image" src="https://github.com/user-attachments/assets/4fe40cd7-7bec-44ba-b204-9f9b7f6956e6" />
+![The screenshot and record buttons on the taskbar](docs/taskbar-snipper.png)
 
 - **Print Screen**, or the screenshot button, freezes the screen to select an area or a window. A
   toolbox above it draws with a pencil, lines, arrows, boxes and text in any color and thickness;
