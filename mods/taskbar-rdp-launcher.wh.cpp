@@ -1594,6 +1594,12 @@ public:
         }
     }
 
+    // The latest point the mouse moved to, when the UI thread gets the move posted to it.
+    LPARAM TakeMouseMove() {
+        movePending_ = false;
+        return movePoint_;
+    }
+
     // Shows or hides the window; with notify, the linked widgets are told after.
     void SetVisible(bool visible, bool notify) {
         if (HWND window = window_) {
@@ -1709,7 +1715,12 @@ private:
                     TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window, 0};
                     self->trackingMouse_ = TrackMouseEvent(&track);
                 }
-                PostMessageW(self->input_, message, wParam, lParam);
+                // Only the latest move matters, as Windows has it for a busy thread: one is posted at
+                // a time, and the UI thread takes the latest point when it gets to it (TakeMouseMove).
+                self->movePoint_ = lParam;
+                if (!self->movePending_.exchange(true)) {
+                    PostMessageW(self->input_, message, wParam, lParam);
+                }
                 return 0;
             case WM_MOUSELEAVE:
                 self->trackingMouse_ = false;
@@ -1752,6 +1763,8 @@ private:
     HANDLE ready_ = nullptr;
     std::atomic<HWND> window_{nullptr};
     bool trackingMouse_ = false;  // On its thread.
+    std::atomic<LPARAM> movePoint_{0};
+    std::atomic<bool> movePending_{false};
     SRWLOCK lock_ = SRWLOCK_INIT;  // For the picture.
     HBITMAP picture_ = nullptr;
     POINT position_{};
@@ -1820,9 +1833,6 @@ public:
             DestroyWindow(events_.hwnd_);  // Its timers go with it.
         }
     }
-
-    // The widget's window. It's on another thread: for timers, menus and dialogs, use OwnerWindow.
-    HWND Handle() const { return hwnd_; }
 
     // A hidden window of the UI thread, for timers (which come to OnTimer), and to own menus and
     // dialogs.
@@ -2149,6 +2159,9 @@ private:
             case WM_DPICHANGED_AFTERPARENT:
                 // The widget's, from its window. Not while a dialog of this thread is open (which
                 // disables this window), as a disabled window gets no mouse input.
+                if (message == WM_MOUSEMOVE) {
+                    lParam = window_.TakeMouseMove();
+                }
                 if (hwnd_ && IsWindowEnabled(events_.hwnd_)) {
                     HandleInput(message, wParam, lParam);
                 }
@@ -2207,10 +2220,10 @@ private:
                     EndDrag();
                 } else if (wasPressed) {
                     POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-                    RECT client;
-                    GetClientRect(hwnd_, &client);
-                    // Pressing and sliding off the widget before letting go doesn't click it.
-                    if (PtInRect(&client, point)) {
+                    // Pressing and sliding off the widget before letting go doesn't click it (nor
+                    // does letting go after its window has gone with the taskbar).
+                    RECT client{};
+                    if (GetClientRect(hwnd_, &client) && PtInRect(&client, point)) {
                         OnClick(point, MouseButton::Left);
                     }
                 }
