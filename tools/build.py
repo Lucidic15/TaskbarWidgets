@@ -43,6 +43,12 @@ def read_mod(path):
     return meta, settings
 
 
+def read_widget_class(path):
+    """The class of the mod's widget window (its kWidgetClassName)."""
+    match = re.search(r'kWidgetClassName\[\] = L"([^"]+)"', open(path, encoding="utf-8").read())
+    return match.group(1) if match else ""
+
+
 def wide_literal(text):
     """A C++ wide string literal, a line at a time."""
     if not text:
@@ -54,7 +60,7 @@ def wide_literal(text):
     return "\n    ".join(parts)
 
 
-def write_mod_info(path, mod_id, meta, settings, app):
+def write_mod_info(path, mod_id, meta, settings, widget_class, app):
     with open(path, "w", encoding="utf-8", newline="\n") as out:
         out.write("// Written by tools/build.py from mods/%s.wh.cpp.\n#pragma once\n\n" % mod_id)
         out.write("#define WH_MOD_ID %s\n" % wide_literal(mod_id))
@@ -62,6 +68,10 @@ def write_mod_info(path, mod_id, meta, settings, app):
         out.write("#define WHHOST_NAME %s\n" % wide_literal(meta["name"]))
         out.write("#define WHHOST_APP %s\n" % wide_literal(app["app"]))
         out.write("#define WHHOST_OLD_APP_MUTEX %s\n" % wide_literal(app["old_mutex"]))
+        # A tool mod runs in a windhawk.exe process of its own; the others are loaded into Explorer,
+        # and put their widget window (of this class) inside the taskbar.
+        out.write("#define WHHOST_TOOL_MOD %d\n" % (meta.get("include") == "windhawk.exe"))
+        out.write("#define WHHOST_WIDGET_CLASS %s\n" % wide_literal(widget_class))
         out.write("#define WHHOST_SETTINGS \\\n    %s\n" % wide_literal(settings).replace("\n    ", " \\\n    "))
 
 
@@ -191,7 +201,7 @@ def build(mod_id, compiler, out_dir):
     meta, settings = read_mod(source)
     work = os.path.join(out_dir, mod_id)
     os.makedirs(work, exist_ok=True)
-    write_mod_info(os.path.join(work, "mod_info.h"), mod_id, meta, settings, app)
+    write_mod_info(os.path.join(work, "mod_info.h"), mod_id, meta, settings, read_widget_class(source), app)
     write_resources(os.path.join(work, "app.res"), meta, app)
     exe = os.path.join(out_dir, app["app"] + ".exe")
     command = [compiler]

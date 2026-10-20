@@ -1,4 +1,4 @@
-// The standalone host: runs a Windhawk tool mod (mods/*.wh.cpp) as an app of its own. It gives the
+// The standalone host: runs a Windhawk mod (mods/*.wh.cpp) as an app of its own. It gives the
 // mod Windhawk's API (windhawk_api.h): settings from a settings file, edited in a window made from
 // the mod's settings block; storage in the registry; and a log. It starts and stops the mod as
 // Windhawk would, and puts an icon in the notification area for the settings, starting with
@@ -20,12 +20,43 @@
 
 #include "windhawk_api.h"
 
-// The mod's entry points (the same ones Windhawk calls).
+// The mod's entry points (the same ones Windhawk calls): a tool mod's, or those of a mod Windhawk
+// loads into Explorer.
+#if WHHOST_TOOL_MOD
 BOOL WhTool_ModInit();
 void WhTool_ModSettingsChanged();
 void WhTool_ModUninit();
+#else
+BOOL Wh_ModInit();
+void Wh_ModSettingsChanged();
+void Wh_ModUninit();
+#endif
 
 namespace {
+
+bool StartMod() {
+#if WHHOST_TOOL_MOD
+    return WhTool_ModInit();
+#else
+    return Wh_ModInit();
+#endif
+}
+
+void ModSettingsChanged() {
+#if WHHOST_TOOL_MOD
+    WhTool_ModSettingsChanged();
+#else
+    Wh_ModSettingsChanged();
+#endif
+}
+
+void StopMod() {
+#if WHHOST_TOOL_MOD
+    WhTool_ModUninit();
+#else
+    Wh_ModUninit();
+#endif
+}
 
 // ---------------------------------------------------------------------------
 // Where the app keeps things: settings in %APPDATA%\TaskbarWidgets\<app>, files the mod keeps in
@@ -663,7 +694,7 @@ private:
             }
             SaveSettingValue(setting.key, value);
         }
-        WhTool_ModSettingsChanged();
+        ModSettingsChanged();
     }
 
     void Browse(const Row& row) {
@@ -866,7 +897,7 @@ LRESULT CALLBACK HostProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
             if (wParam) {
                 // Windows is shutting down: stop the mod the way exiting would.
                 UpdateTrayIcon(hwnd, NIM_DELETE);
-                WhTool_ModUninit();
+                StopMod();
                 ExitProcess(0);
             }
             return 0;
@@ -888,6 +919,16 @@ bool MutexExists(const wchar_t* name) {
     return false;
 }
 
+// Whether Windhawk runs the same mod: a tool mod's process has a mutex named after it, and a mod
+// loaded into Explorer has its widget window inside the taskbar.
+bool ModRunningInWindhawk() {
+    if (MutexExists(L"windhawk-tool-mod_" WH_MOD_ID)) {
+        return true;
+    }
+    HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+    return *WHHOST_WIDGET_CLASS && taskbar && FindWindowExW(taskbar, nullptr, WHHOST_WIDGET_CLASS, nullptr);
+}
+
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
@@ -906,7 +947,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 0;
     }
     // Not alongside the same widget from Windhawk, or from the old app.
-    if (MutexExists(L"windhawk-tool-mod_" WH_MOD_ID)) {
+    if (ModRunningInWindhawk()) {
         MessageBoxW(nullptr,
                     WHHOST_NAME L" is already running as a Windhawk mod. To use this app instead, turn the mod off in Windhawk, then "
                                 L"open this again.",
@@ -935,7 +976,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_taskbarCreatedMessage = RegisterWindowMessageW(L"TaskbarCreated");
     ChangeWindowMessageFilterEx(host, g_taskbarCreatedMessage, MSGFLT_ALLOW, nullptr);
 
-    if (!WhTool_ModInit()) {
+    if (!StartMod()) {
         MessageBoxW(nullptr, WHHOST_NAME L" couldn't start.", WHHOST_NAME, MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -952,7 +993,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
 
     UpdateTrayIcon(host, NIM_DELETE);
-    WhTool_ModUninit();
+    StopMod();
     DestroyWindow(host);
     CoUninitialize();
     CloseHandle(single);

@@ -1027,10 +1027,14 @@ BOOL CALLBACK AddOtherWidget(HWND window, LPARAM widgets) {
     return TRUE;
 }
 
-// The widget windows of the other widgets that are running, with their ids.
+// The widget windows of the other widgets that are running, with their ids: top-level windows, and
+// windows inside the taskbar (a widget's mod that Windhawk loads into Explorer puts it there).
 std::vector<std::pair<int, HWND>> OtherWidgets() {
     std::vector<std::pair<int, HWND>> widgets;
     EnumWindows(AddOtherWidget, (LPARAM)&widgets);
+    if (HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr)) {
+        EnumChildWindows(taskbar, AddOtherWidget, (LPARAM)&widgets);
+    }
     return widgets;
 }
 
@@ -1039,7 +1043,11 @@ HWND FindMember(int member) {
         return nullptr;
     }
     if (member < kMemberCount) {
-        return FindWindowW(kMembers[member].windowClass, nullptr);
+        if (HWND window = FindWindowW(kMembers[member].windowClass, nullptr)) {
+            return window;
+        }
+        HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+        return taskbar ? FindWindowExW(taskbar, nullptr, kMembers[member].windowClass, nullptr) : nullptr;
     }
     // One added after this widget: by the id it shows.
     for (const auto& [id, window] : OtherWidgets()) {
