@@ -2,7 +2,7 @@
 // @id              taskbar-audio-flipper
 // @name            Taskbar Audio Flipper
 // @description     A taskbar widget that switches between your speakers, headsets and microphones with a click, and turns a webcam on and off
-// @version         1.1.0
+// @version         1.2.0
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
 // @include         explorer.exe
@@ -74,9 +74,10 @@ this one into one: right-click any of them, open **Link widgets**, and choose **
 they sit side by side with a divider between them, and dragging any of them moves them all; **Move
 this widget left** and **right** change their order. A widget that hides leaves no gap.
 
-Update the linked widgets' mods together (Taskbar Audio Flipper and Taskbar RDP Launcher 1.1 or
-later): a widget still on 1.0 doesn't follow the others when they're dragged, reordered or
-unlinked.
+Update the linked widgets' mods together (Taskbar Audio Flipper and Taskbar RDP Launcher 1.2 or
+later, Taskbar Snipper 1.1 or later): their widgets are inside the taskbar now, where older versions
+don't look for them, so an older one overlaps the others and doesn't follow them when they're
+dragged, reordered or unlinked.
 
 ## Settings
 

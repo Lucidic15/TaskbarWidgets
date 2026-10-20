@@ -2,7 +2,7 @@
 // @id              taskbar-snipper
 // @name            Taskbar Snipper
 // @description     Print Screen, or a button on the taskbar, selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save
-// @version         1.0.0
+// @version         1.1.0
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
 // @include         explorer.exe
@@ -98,9 +98,10 @@ with the buttons into one: right-click any of them, open **Link widgets**, and c
 the other. Linked, they sit side by side with a divider between them, and dragging any of them
 moves them all; **Move this widget left** and **right** change their order.
 
-Update the linked widgets' mods together (Taskbar Audio Flipper and Taskbar RDP Launcher 1.1 or
-later): a widget still on 1.0 doesn't follow the others when they're dragged, reordered or
-unlinked.
+Update the linked widgets' mods together (Taskbar Audio Flipper and Taskbar RDP Launcher 1.2 or
+later, Taskbar Snipper 1.1 or later): their widgets are inside the taskbar now, where older versions
+don't look for them, so an older one overlaps the others and doesn't follow them when they're
+dragged, reordered or unlinked.
 
 ## Good to know
 
