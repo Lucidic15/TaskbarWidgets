@@ -2,7 +2,9 @@
 
 Three small widgets for the Windows 11 taskbar, in the style of the Windows weather widget. Each one
 is a [Windhawk](https://windhawk.net) mod, and the same code builds into a standalone app, for
-running it without Windhawk.
+running it without Windhawk. Either way the widget sits inside the taskbar itself, so it moves and
+auto-hides with it: Windhawk loads the mods into Explorer, and an app puts its widget into
+Explorer's taskbar from its own process.
 
 | Widget | What it does | App |
 | --- | --- | --- |
