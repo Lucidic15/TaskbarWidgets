@@ -925,8 +925,15 @@ bool ModRunningInWindhawk() {
     if (MutexExists(L"windhawk-tool-mod_" WH_MOD_ID)) {
         return true;
     }
-    HWND taskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
-    return *WHHOST_WIDGET_CLASS && taskbar && FindWindowExW(taskbar, nullptr, WHHOST_WIDGET_CLASS, nullptr);
+    // In Explorer's taskbar, which isn't always the first Shell_TrayWnd (taskbar replacements such as
+    // RetroBar make one too).
+    for (HWND taskbar = FindWindowExW(nullptr, nullptr, L"Shell_TrayWnd", nullptr); *WHHOST_WIDGET_CLASS && taskbar;
+         taskbar = FindWindowExW(nullptr, taskbar, L"Shell_TrayWnd", nullptr)) {
+        if (FindWindowExW(taskbar, nullptr, WHHOST_WIDGET_CLASS, nullptr)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace
