@@ -218,9 +218,9 @@ std::wstring WindowsFolder() {
     return length > 0 && length < MAX_PATH ? std::wstring(path, length) : L"C:\\Windows";
 }
 
-// System32, for starting the programs in it. Windhawk 1.7 runs tool mods in its 32-bit
-// windhawk.exe, where Windows redirects System32 to the 32-bit SysWOW64; "Sysnative" reaches the
-// real System32 from there. Windhawk 2.0 runs them 64-bit, where System32 is the real one.
+// System32, for starting the programs in it. Explorer and the app are 64-bit on 64-bit Windows,
+// where System32 is the real one; a 32-bit process there gets the 32-bit SysWOW64 instead, and
+// "Sysnative" reaches the real System32 from it.
 std::wstring NativeSystemFolder() {
     return WindowsFolder() + (IsWow64() ? L"\\Sysnative" : L"\\System32");
 }
