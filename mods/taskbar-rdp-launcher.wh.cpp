@@ -1201,6 +1201,11 @@ bool InTaskbarProcess() {
     return true;
 }
 
+UINT TaskbarCreatedMessage() {
+    static const UINT message = RegisterWindowMessageW(L"TaskbarCreated");
+    return message;
+}
+
 // A hidden top-level window of the app's thread: it owns the app's dialogs, and hears when a
 // Windows setting, the displays or the devices change, which a window for messages only doesn't.
 class OwnerWindow {
@@ -1208,6 +1213,7 @@ public:
     std::function<void()> onSettingChange;
     std::function<void()> onDisplayChange;
     std::function<void(WPARAM event)> onDeviceChange;
+    std::function<void()> onTaskbarCreated;  // Explorer made the taskbar (as it started, say).
 
     bool Create(const wchar_t* className) {
         if (const wchar_t* registered = RegisterForwardingClass<OwnerWindow>(className)) {
@@ -1231,6 +1237,8 @@ public:
             onDisplayChange();
         } else if (message == WM_DEVICECHANGE && onDeviceChange) {
             onDeviceChange(wParam);
+        } else if (message == TaskbarCreatedMessage() && onTaskbarCreated) {
+            onTaskbarCreated();
         }
         return false;
     }
@@ -1783,23 +1791,7 @@ public:
             }
             g_menu = nullptr;
         }
-        try {
-            if (element_) {
-                if (layoutToken_.value) {
-                    element_.LayoutUpdated(layoutToken_);
-                    layoutToken_ = {};
-                }
-                if (auto panel = wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>()) {
-                    uint32_t index = 0;
-                    if (panel.Children().IndexOf(element_, index)) {
-                        panel.Children().RemoveAt(index);
-                    }
-                    RemovePanelIfEmpty(panel);
-                }
-            }
-        } catch (...) {
-            Wh_Log(L"Couldn't take the widget out of the taskbar");
-        }
+        TakeOut();
         Forget();
     }
 
@@ -1865,6 +1857,26 @@ public:
     }
 
 private:
+    void TakeOut() {
+        try {
+            if (element_) {
+                if (layoutToken_.value) {
+                    element_.LayoutUpdated(layoutToken_);
+                    layoutToken_ = {};
+                }
+                if (auto panel = wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>()) {
+                    uint32_t index = 0;
+                    if (panel.Children().IndexOf(element_, index)) {
+                        panel.Children().RemoveAt(index);
+                    }
+                    RemovePanelIfEmpty(panel);
+                }
+            }
+        } catch (...) {
+            Wh_Log(L"Couldn't take the widget out of the taskbar");
+        }
+    }
+
     wuxc::StackPanel SlotPanel(uint32_t& index) {
         auto panel = element_ ? wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>() : nullptr;
         return panel && panel.Children().IndexOf(element_, index) ? panel : nullptr;
@@ -1895,31 +1907,43 @@ private:
             g_bridge.SetDispatcher(element_.Dispatcher(), taskbar_);
             PostToApp(kAttachedMessage, 0, 0);
         } catch (...) {
-            Wh_Log(L"Couldn't put the widget in the taskbar");
-            Detach();
+            // The taskbar may still be setting up, as Explorer starts: try again.
+            Wh_Log(L"Couldn't put the widget in the taskbar yet");
+            TakeOut();
+            element_ = nullptr;
+            if (view_) {
+                view_->Forget();
+            }
+            RetrySoon();
         }
     }
 
+    // Tries again a moment later, for up to a minute: as Explorer starts, the taskbar's XAML comes
+    // some time after its window. With a timer of the thread's, as XAML's own need XAML there.
     void RetrySoon() {
-        if (++attempts_ > 50) {
+        if (++attempts_ > 240) {
             Wh_Log(L"Couldn't find the taskbar's layout");
             return;
         }
-        if (!retry_) {
-            retry_ = wux::DispatcherTimer();
-            retry_.Interval(std::chrono::milliseconds(100));
-            retry_.Tick([this](auto const&, auto const&) {
-                retry_.Stop();
-                TryAttach();
-            });
+        if (!retryTimer_) {
+            retrying_ = this;
+            retryTimer_ = SetTimer(nullptr, 0, 250, RetryTimerProc);
         }
-        retry_.Start();
+    }
+
+    static void CALLBACK RetryTimerProc(HWND, UINT, UINT_PTR timer, DWORD) {
+        if (retrying_ && timer == retrying_->retryTimer_) {
+            retrying_->StopRetrying();
+            retrying_->TryAttach();
+        } else {
+            KillTimer(nullptr, timer);
+        }
     }
 
     void StopRetrying() {
-        if (retry_) {
-            retry_.Stop();
-            retry_ = nullptr;
+        if (retryTimer_) {
+            KillTimer(nullptr, retryTimer_);
+            retryTimer_ = 0;
         }
     }
 
@@ -1945,7 +1969,8 @@ private:
     View* view_ = nullptr;
     wux::FrameworkElement element_{nullptr};
     winrt::event_token layoutToken_{};
-    wux::DispatcherTimer retry_{nullptr};
+    UINT_PTR retryTimer_ = 0;
+    static inline WidgetHost* retrying_ = nullptr;
     int attempts_ = 0;
     SRWLOCK boundsLock_ = SRWLOCK_INIT;  // For these, which the app reads.
     HWND taskbar_ = nullptr;
@@ -4106,6 +4131,18 @@ void AttachWidget(HWND taskbar) {
     TaskbarXaml::g_host.Attach(taskbar, TaskbarXaml::ReadSlot(), &g_view);
 }
 
+// Puts the widget in the taskbar if it isn't there (from the app's thread): Explorer said it made
+// the taskbar, which the widget may have missed as Explorer started.
+void AttachIfMissing() {
+    if (HWND taskbar = OwnTaskbar()) {
+        TaskbarXaml::RunOnWindowThread(taskbar, [taskbar]() {
+            if (!TaskbarXaml::g_host.Element()) {
+                AttachWidget(taskbar);
+            }
+        });
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The app: keeps the widget up to date, starts sessions and runs the menu.
 
@@ -4195,6 +4232,7 @@ private:
         }
         ForgetDraggedWidget();
         owner_.onSettingChange = []() { RefreshShellSettings(); };
+        owner_.onTaskbarCreated = []() { AttachIfMissing(); };
         owner_.onDisplayChange = [this]() {
             RefreshDisplays();
             RefreshWidget();
