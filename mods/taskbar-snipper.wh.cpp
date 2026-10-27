@@ -14,7 +14,7 @@
 /*
 # Taskbar Snipper
 
-![The screenshot and record buttons on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-snipper/screenshot.png)
+![The screenshot and record buttons on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-snipper/screenshot-1.2.png)
 
 Press **Print Screen**, or click the screenshot button on the taskbar, to select part of the
 screen. A toolbox opens right above the selection to mark it up with a pencil, lines, arrows, boxes
@@ -89,7 +89,7 @@ The menu opens the screenshots and recordings folders, and **Choose the screensh
 **Choose the recordings folder…** pick others. The folders can be set in the mod's settings too;
 whichever you changed last is used.
 
-![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-widgets/linked.png)
+![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-widgets/side-by-side.png)
 
 From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
 [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and

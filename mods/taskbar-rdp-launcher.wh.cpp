@@ -14,7 +14,7 @@
 /*
 # Taskbar RDP Launcher
 
-![The widget on the taskbar, with a computer and buttons for 1, 2 and 3 displays](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-rdp-launcher/screenshot-1.2.png)
+![The widget on the taskbar, with a computer and buttons for 1, 2 and 3 displays](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-rdp-launcher/screenshot-1.3.png)
 
 A taskbar widget, in the style of the Windows weather widget, that starts Remote Desktop
 full screen on as many of your displays as you want. Instead of editing `use multimon` and
@@ -62,7 +62,7 @@ sometimes docked keeps separate buttons for the desk and for the road.
 
 ## Next to the other widgets
 
-![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-widgets/linked.png)
+![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](https://raw.githubusercontent.com/Lucidic15/windhawk-mods/images/taskbar-widgets/side-by-side.png)
 
 From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
 [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and
