@@ -813,11 +813,12 @@ bool InTaskbarProcess() {
 }
 
 // A hidden top-level window of the app's thread: it owns the app's dialogs, and hears when a
-// Windows setting or the displays change, which a window for messages only doesn't.
+// Windows setting, the displays or the devices change, which a window for messages only doesn't.
 class OwnerWindow {
 public:
     std::function<void()> onSettingChange;
     std::function<void()> onDisplayChange;
+    std::function<void(WPARAM event)> onDeviceChange;
 
     bool Create(const wchar_t* className) {
         if (const wchar_t* registered = RegisterForwardingClass<OwnerWindow>(className)) {
@@ -839,6 +840,8 @@ public:
             onSettingChange();
         } else if (message == WM_DISPLAYCHANGE && onDisplayChange) {
             onDisplayChange();
+        } else if (message == WM_DEVICECHANGE && onDeviceChange) {
+            onDeviceChange(wParam);
         }
         return false;
     }
