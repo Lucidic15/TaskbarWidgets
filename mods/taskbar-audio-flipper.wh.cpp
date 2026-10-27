@@ -6,7 +6,7 @@
 // @author          Lucidic15
 // @github          https://github.com/Lucidic15
 // @include         explorer.exe
-// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -loleaut32 -luuid -lsetupapi -lcfgmgr32 -lruntimeobject
+// @compilerOptions -lgdiplus -lgdi32 -luser32 -lshell32 -lshcore -ldwmapi -ladvapi32 -lole32 -loleaut32 -luuid -lsetupapi -lcfgmgr32 -lversion -lruntimeobject
 // @license         MIT
 // ==/WindhawkMod==
 
@@ -28,7 +28,10 @@ up to three sections, which you can each show or hide:
 On the Output and Input sections:
 
 - **Hover**: a flyout opens above it with the device's name, a volume slider, and the device icon
-  as a mute button, like the Windows 11 volume flyout.
+  as a mute button, like the Windows 11 volume flyout. The output's has a volume mixer too: each
+  app using the output, with its icon (click it to mute the app) and volume, and a gear for
+  Windows' volume mixer settings. **More volume settings** at the bottom opens Windows' Sound
+  settings.
 - **Left-click**: switch to the next device.
 - **Scroll**: turn the volume (or microphone level) up or down.
 - **Middle-click**: mute / unmute.
@@ -110,6 +113,7 @@ change). Use the app or the mod, not both: each shows its own widget.
 #include <dwmapi.h>
 #include <sddl.h>
 #include <mmdeviceapi.h>
+#include <audiopolicy.h>
 #include <endpointvolume.h>
 #include <propidl.h>
 #include <setupapi.h>
@@ -131,7 +135,9 @@ change). Use the app or the mod, not both: each shows its own widget.
 #include <winrt/Windows.UI.Xaml.Controls.h>
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.Xaml.Media.Imaging.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 
 #include <windhawk_utils.h>
@@ -1957,6 +1963,7 @@ public:
     // For the widget's own flyouts, on the taskbar's thread.
     std::function<void(bool entered)> onHover;
     std::function<void()> onPress;
+    std::function<void()> onClick;  // Left-clicked, after the app is told.
 
     // plainOnClick: drops the highlight on a click, as the click shows something that copies the
     // screen.
@@ -2058,6 +2065,9 @@ private:
         switch (kind) {
             case PointerUpdateKind::LeftButtonReleased:
                 PostToApp(kClickMessage, part_, (LPARAM)MouseButton::Left);
+                if (onClick) {
+                    onClick();
+                }
                 break;
             case PointerUpdateKind::MiddleButtonReleased:
                 PostToApp(kClickMessage, part_, (LPARAM)MouseButton::Middle);
@@ -2395,6 +2405,9 @@ namespace {
 const CLSID kClsidMMDeviceEnumerator = {0xBCDE0395, 0xE52F, 0x467C, {0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E}};
 const IID kIidMMDeviceEnumerator = {0xA95664D2, 0x9614, 0x4F35, {0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6}};
 const IID kIidAudioEndpointVolume = {0x5CDF2C82, 0x841E, 0x4546, {0x97, 0x22, 0x0C, 0xF7, 0x40, 0x78, 0x22, 0x9A}};
+const IID kIidAudioSessionManager2 = {0x77AA99A0, 0x1BD6, 0x484F, {0x8B, 0xC7, 0x2C, 0x65, 0x4C, 0x9A, 0x9B, 0x6F}};
+const IID kIidAudioSessionControl2 = {0xBFB7FF88, 0x7239, 0x4FC9, {0x8F, 0xA2, 0x07, 0xC9, 0x50, 0xBE, 0x9C, 0x6D}};
+const IID kIidSimpleAudioVolume = {0x87CE5498, 0x68D6, 0x44E5, {0x92, 0x15, 0x6D, 0xA4, 0x7E, 0xF8, 0x83, 0xD8}};
 
 // PKEY_Device_FriendlyName: the name plus the audio hardware ("Headset (4- USB Audio Device)").
 const PROPERTYKEY kKeyFriendlyName = {{0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
@@ -2611,6 +2624,116 @@ int CompareNames(const std::wstring& a, const std::wstring& b) {
     return CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, a.c_str(), -1, b.c_str(), -1, nullptr, nullptr, 0) - 2;
 }
 
+// An icon, as the volume mixer shows it.
+struct IconImage {
+    int size = 0;
+    std::vector<uint8_t> pixels;  // Premultiplied BGRA, top row first.
+};
+
+// An app using the default output, as the volume mixer shows it: its sessions there, together.
+struct AppVolume {
+    DWORD processId = 0;  // 0 for Windows' system sounds.
+    std::wstring name;
+    std::shared_ptr<const IconImage> icon;  // None for the system sounds, or a program without one.
+    float level = 0;
+    bool muted = false;
+
+    bool operator==(const AppVolume& other) const = default;
+};
+
+// The program a process runs, or nothing when it can't be read.
+std::wstring ProgramOf(DWORD processId) {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (!process) {
+        return {};
+    }
+    WCHAR path[MAX_PATH];
+    DWORD length = MAX_PATH;
+    std::wstring program = QueryFullProcessImageNameW(process, 0, path, &length) ? path : L"";
+    CloseHandle(process);
+    return program;
+}
+
+// A program's name as Windows shows it: its description ("Google Chrome"), or its file name.
+std::wstring ProgramName(const std::wstring& path) {
+    DWORD handle = 0;
+    DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);
+    std::vector<BYTE> info(size);
+    struct Translation {
+        WORD language;
+        WORD codePage;
+    }* translations = nullptr;
+    UINT length = 0;
+    if (size && GetFileVersionInfoW(path.c_str(), 0, size, info.data()) &&
+        VerQueryValueW(info.data(), L"\\VarFileInfo\\Translation", (void**)&translations, &length) && length >= sizeof(Translation)) {
+        wchar_t key[64];
+        swprintf(key, 64, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[0].language, translations[0].codePage);
+        wchar_t* description = nullptr;
+        if (VerQueryValueW(info.data(), key, (void**)&description, &length) && length > 1 && !Trim(description).empty()) {
+            return Trim(description);
+        }
+    }
+    std::wstring name = path.substr(path.find_last_of(L'\\') + 1);
+    size_t dot = name.find_last_of(L'.');
+    return dot == std::wstring::npos ? name : name.substr(0, dot);
+}
+
+// A program's icon, at 32 pixels.
+std::shared_ptr<const IconImage> ProgramIcon(const std::wstring& path) {
+    SHFILEINFOW file{};
+    if (!SHGetFileInfoW(path.c_str(), 0, &file, sizeof(file), SHGFI_ICON | SHGFI_LARGEICON) || !file.hIcon) {
+        return nullptr;
+    }
+    ICONINFO info{};
+    std::shared_ptr<IconImage> image;
+    if (GetIconInfo(file.hIcon, &info) && info.hbmColor) {
+        BITMAP bitmap{};
+        GetObjectW(info.hbmColor, sizeof(bitmap), &bitmap);
+        int size = bitmap.bmWidth;
+        if (size > 0 && size <= 256 && bitmap.bmHeight == size) {
+            BITMAPINFO format{};
+            format.bmiHeader = {sizeof(BITMAPINFOHEADER), size, -size, 1, 32, BI_RGB};
+            image = std::make_shared<IconImage>();
+            image->size = size;
+            image->pixels.resize((size_t)size * size * 4);
+            HDC screen = GetDC(nullptr);
+            bool read = GetDIBits(screen, info.hbmColor, 0, size, image->pixels.data(), &format, DIB_RGB_COLORS) == size;
+            // Icons without an alpha channel take their transparency from the mask.
+            bool hasAlpha = false;
+            for (size_t i = 3; i < image->pixels.size(); i += 4) {
+                hasAlpha = hasAlpha || image->pixels[i] != 0;
+            }
+            if (read && !hasAlpha && info.hbmMask) {
+                std::vector<uint8_t> mask(image->pixels.size());
+                if (GetDIBits(screen, info.hbmMask, 0, size, mask.data(), &format, DIB_RGB_COLORS) == size) {
+                    for (size_t i = 0; i < mask.size(); i += 4) {
+                        image->pixels[i + 3] = mask[i] ? 0 : 255;
+                    }
+                }
+            }
+            ReleaseDC(nullptr, screen);
+            // Premultiplied, as XAML takes it.
+            for (size_t i = 0; i < image->pixels.size(); i += 4) {
+                uint8_t alpha = image->pixels[i + 3];
+                for (int c = 0; c < 3; c++) {
+                    image->pixels[i + c] = (uint8_t)(image->pixels[i + c] * alpha / 255);
+                }
+            }
+            if (!read) {
+                image = nullptr;
+            }
+        }
+    }
+    if (info.hbmColor) {
+        DeleteObject(info.hbmColor);
+    }
+    if (info.hbmMask) {
+        DeleteObject(info.hbmMask);
+    }
+    DestroyIcon(file.hIcon);
+    return image;
+}
+
 // Lists output (eRender) and input (eCapture) devices, reads the default device's volume and
 // changes the default device. Used on the UI thread.
 class AudioDevices {
@@ -2762,6 +2885,69 @@ public:
         }
     }
 
+    // The apps using the default output, as the volume mixer shows them: in Windows' order, with
+    // the system sounds last.
+    std::vector<AppVolume> AppVolumes() {
+        std::vector<AppVolume> apps;
+        ForEachSession([&](DWORD processId, ISimpleAudioVolume* volume) {
+            if (std::any_of(apps.begin(), apps.end(), [&](const AppVolume& app) { return app.processId == processId; })) {
+                return;  // Its first session speaks for the app.
+            }
+            AppVolume app;
+            app.processId = processId;
+            BOOL muted = FALSE;
+            if (FAILED(volume->GetMasterVolume(&app.level)) || FAILED(volume->GetMute(&muted))) {
+                return;
+            }
+            app.muted = muted != FALSE;
+            if (processId == 0) {
+                app.name = L"System sounds";
+            } else {
+                std::wstring program = ProgramOf(processId);
+                if (program.empty()) {
+                    return;  // Gone, or not ours to read.
+                }
+                auto known = programs_.find(program);
+                if (known == programs_.end()) {
+                    known = programs_.emplace(program, std::make_pair(ProgramName(program), ProgramIcon(program))).first;
+                }
+                app.name = known->second.first;
+                app.icon = known->second.second;
+            }
+            apps.push_back(app);
+        });
+        std::stable_partition(apps.begin(), apps.end(), [](const AppVolume& app) { return app.processId != 0; });
+        return apps;
+    }
+
+    // Sets an app's volume (0 to 1) on the default output, unmuting it when turned up.
+    void SetAppVolume(DWORD processId, float level) {
+        ForEachSession([&](DWORD sessionProcess, ISimpleAudioVolume* volume) {
+            if (sessionProcess == processId) {
+                volume->SetMasterVolume(std::max(0.0f, std::min(1.0f, level)), nullptr);
+                if (level > 0) {
+                    volume->SetMute(FALSE, nullptr);
+                }
+            }
+        });
+    }
+
+    // Mutes an app on the default output, or unmutes it when it's muted.
+    void ToggleAppMute(DWORD processId) {
+        bool anyPlaying = false;
+        ForEachSession([&](DWORD sessionProcess, ISimpleAudioVolume* volume) {
+            BOOL muted = FALSE;
+            if (sessionProcess == processId && SUCCEEDED(volume->GetMute(&muted)) && !muted) {
+                anyPlaying = true;
+            }
+        });
+        ForEachSession([&](DWORD sessionProcess, ISimpleAudioVolume* volume) {
+            if (sessionProcess == processId) {
+                volume->SetMute(anyPlaying, nullptr);
+            }
+        });
+    }
+
     // Sets the default device's volume (0 to 1), unmuting it like the Windows volume slider does.
     // Called for every slider movement, so it reuses the default device's volume control, which is
     // swapped for the new one's as soon as Windows says the default device changed.
@@ -2780,6 +2966,39 @@ private:
         std::wstring deviceId;
         ComPtr<IAudioEndpointVolume> control;
     };
+
+    // Calls visit with each live sound session on the default output: its process (0 for the
+    // system sounds) and its volume.
+    template <typename Visit>
+    void ForEachSession(Visit&& visit) {
+        ComPtr<IMMDevice> device;
+        ComPtr<IAudioSessionManager2> manager;
+        ComPtr<IAudioSessionEnumerator> sessions;
+        if (!enumerator_ || FAILED(enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, device.Put())) ||
+            FAILED(device->Activate(kIidAudioSessionManager2, CLSCTX_ALL, nullptr, (void**)manager.Put())) ||
+            FAILED(manager->GetSessionEnumerator(sessions.Put()))) {
+            return;
+        }
+        int count = 0;
+        sessions->GetCount(&count);
+        for (int i = 0; i < count; i++) {
+            ComPtr<IAudioSessionControl> control;
+            ComPtr<IAudioSessionControl2> control2;
+            ComPtr<ISimpleAudioVolume> volume;
+            AudioSessionState state = AudioSessionStateExpired;
+            if (FAILED(sessions->GetSession(i, control.Put())) || FAILED(control->GetState(&state)) || state == AudioSessionStateExpired ||
+                FAILED(control->QueryInterface(kIidAudioSessionControl2, (void**)control2.Put())) ||
+                FAILED(control->QueryInterface(kIidSimpleAudioVolume, (void**)volume.Put()))) {
+                continue;
+            }
+            DWORD processId = 0;
+            bool system = control2->IsSystemSoundsSession() == S_OK;
+            if (!system && (FAILED(control2->GetProcessId(&processId)) || processId == 0)) {
+                continue;
+            }
+            visit(system ? 0 : processId, volume.Get());
+        }
+    }
 
     void ForgetVolume(CachedVolume& cache) {
         if (cache.control && listener_) {
@@ -2805,6 +3024,8 @@ private:
     // The default device's volume control, per direction, kept between refreshes and only
     // reactivated when the default device changes.
     CachedVolume volumes_[2];
+    // The programs' names and icons, read once each.
+    std::map<std::wstring, std::pair<std::wstring, std::shared_ptr<const IconImage>>> programs_;
 };
 
 // ---------------------------------------------------------------------------
@@ -3210,17 +3431,27 @@ struct WidgetContent {
     std::optional<AudioStatus> output;
     std::optional<AudioStatus> input;
     std::optional<WebcamStatus> webcam;  // Nothing hides the webcam section.
+    std::vector<AppVolume> apps;         // While the output's flyout is open, for its volume mixer.
 };
 
-// The widget's parts: the sections, then the volume flyout's mute buttons.
+// The widget's parts: the sections, then the volume flyout's mute buttons and settings links.
 constexpr int kOutputPart = 0;
 constexpr int kInputPart = 1;
 constexpr int kWebcamPart = 2;
 constexpr int kOutputMutePart = 3;
 constexpr int kInputMutePart = 4;
+constexpr int kSoundSettingsPart = 5;  // "More volume settings" (or sound settings, for the input).
+constexpr int kMixerSettingsPart = 6;  // The volume mixer's gear.
 // From the volume flyout to the app. wParam: the section's part (output or input).
 constexpr UINT kVolumeMessage = WM_APP + 0x310;      // lParam: the slider's level, 0 to 1000.
 constexpr UINT kVolumeDoneMessage = WM_APP + 0x311;  // The slider was let go.
+// From the volume mixer to the app.
+constexpr UINT kMixerMessage = WM_APP + 0x312;      // wParam: 1 when it opened, 0 when it closed.
+constexpr UINT kAppVolumeMessage = WM_APP + 0x313;  // wParam: the app's process. lParam: its level, 0 to 1000.
+constexpr UINT kAppMuteMessage = WM_APP + 0x314;    // wParam: the app's process.
+
+const wchar_t* const kGlyphSettings = L"\uE713";
+const wchar_t* const kGlyphApp = L"\uECAA";  // For an app without an icon.
 
 std::optional<EDataFlow> FlowOfPart(int part) {
     if (part == kOutputPart || part == kOutputMutePart) {
@@ -3516,15 +3747,18 @@ private:
     void OpenFlyout(int part) {
         CloseFlyout();
         flyoutPart_ = part;
+        bool output = part == kOutputPart;
         wuxc::StackPanel panel;
         panel.Width(288);
+
+        // The device and its volume.
+        wuxc::StackPanel master;
         flyoutTitle_ = MakeText(14, true);
         flyoutDetail_ = MakeText(12, false);
         flyoutDetail_.Opacity(0.75);
         flyoutDetail_.Margin(wux::ThicknessHelper::FromLengths(0, 2, 0, 0));
-        panel.Children().Append(flyoutTitle_);
-        panel.Children().Append(flyoutDetail_);
-
+        master.Children().Append(flyoutTitle_);
+        master.Children().Append(flyoutDetail_);
         wuxc::Grid controls;
         controls.Margin(wux::ThicknessHelper::FromLengths(-4, 8, 0, 0));
         wuxc::ColumnDefinition iconColumn;
@@ -3536,17 +3770,11 @@ private:
         controls.ColumnDefinitions().Append(valueColumn);
         // The device icon, which doubles as the mute button.
         flyoutIcon_ = TaskbarXaml::MakeGlyph(kGlyphSpeakers, 18);
-        auto mute = muteButton_.Make(part == kOutputPart ? kOutputMutePart : kInputMutePart, flyoutIcon_, L"Mute");
+        auto mute = muteButton_.Make(output ? kOutputMutePart : kInputMutePart, flyoutIcon_, L"Mute");
         mute.Width(36);
         mute.Height(36);
         controls.Children().Append(mute);
-        slider_ = wuxc::Slider();
-        slider_.Minimum(0);
-        slider_.Maximum(100);
-        slider_.StepFrequency(1);
-        slider_.IsThumbToolTipEnabled(false);
-        slider_.VerticalAlignment(wux::VerticalAlignment::Center);
-        slider_.Margin(wux::ThicknessHelper::FromLengths(8, 0, 8, 0));
+        slider_ = MakeVolumeSlider();
         wuxc::Grid::SetColumn(slider_, 1);
         sliderChanged_ = slider_.ValueChanged(winrt::auto_revoke, [this](auto const&, wuxc::Primitives::RangeBaseValueChangedEventArgs const& args) {
             flyoutValue_.Text(std::to_wstring((int)std::lround(args.NewValue())));
@@ -3566,9 +3794,8 @@ private:
         flyoutValue_.VerticalAlignment(wux::VerticalAlignment::Center);
         wuxc::Grid::SetColumn(flyoutValue_, 2);
         controls.Children().Append(flyoutValue_);
-        panel.Children().Append(controls);
-
-        // Scrolling over the flyout turns the volume, as over the section.
+        master.Children().Append(controls);
+        // Scrolling over the device turns its volume, as over the section.
         wheelHandler_ = winrt::box_value(wux::Input::PointerEventHandler([this](auto const&, wux::Input::PointerRoutedEventArgs const& args) {
             wheelRemainder_ += args.GetCurrentPoint(nullptr).Properties().MouseWheelDelta();
             int notches = wheelRemainder_ / WHEEL_DELTA;
@@ -3578,8 +3805,48 @@ private:
             }
             args.Handled(true);
         }));
-        panel.AddHandler(wux::UIElement::PointerWheelChangedEvent(), wheelHandler_, true);
-        flyoutPanel_ = panel;
+        master.AddHandler(wux::UIElement::PointerWheelChangedEvent(), wheelHandler_, true);
+        flyoutMaster_ = master;
+        panel.Children().Append(master);
+
+        // The output's volume mixer, like Windows': each app's icon, which mutes it, and its volume,
+        // with the gear for the Volume mixer settings.
+        if (output) {
+            panel.Children().Append(MakeSeparator());
+            wuxc::Grid header;
+            auto heading = MakeText(14, true);
+            heading.Text(L"Volume mixer");
+            heading.VerticalAlignment(wux::VerticalAlignment::Center);
+            header.Children().Append(heading);
+            auto gear = mixerSettings_.Make(kMixerSettingsPart, TaskbarXaml::MakeGlyph(kGlyphSettings, 16), L"Volume mixer settings");
+            gear.Width(32);
+            gear.Height(32);
+            gear.HorizontalAlignment(wux::HorizontalAlignment::Right);
+            mixerSettings_.onClick = [this]() { CloseFlyoutSoon(); };
+            header.Children().Append(gear);
+            panel.Children().Append(header);
+            appsPanel_ = wuxc::StackPanel();
+            wuxc::ScrollViewer scroller;
+            scroller.MaxHeight(240);
+            scroller.VerticalScrollBarVisibility(wuxc::ScrollBarVisibility::Auto);
+            scroller.Content(appsPanel_);
+            panel.Children().Append(scroller);
+            noApps_ = MakeText(12, false);
+            noApps_.Opacity(0.75);
+            noApps_.Text(L"No apps are using sound.");
+            noApps_.Margin(wux::ThicknessHelper::FromLengths(0, 4, 0, 4));
+            panel.Children().Append(noApps_);
+        }
+
+        panel.Children().Append(MakeSeparator());
+        auto moreText = MakeText(14, false);
+        moreText.Text(output ? L"More volume settings" : L"More sound settings");
+        moreText.Margin(wux::ThicknessHelper::FromLengths(4, 6, 8, 6));
+        auto more = moreSettings_.Make(kSoundSettingsPart, moreText, output ? L"More volume settings" : L"More sound settings");
+        more.HorizontalAlignment(wux::HorizontalAlignment::Left);
+        more.Margin(wux::ThicknessHelper::FromLengths(-6, 2, 0, -6));
+        moreSettings_.onClick = [this]() { CloseFlyoutSoon(); };
+        panel.Children().Append(more);
 
         flyout_ = wuxc::Flyout();
         flyout_.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
@@ -3589,9 +3856,51 @@ private:
         wuxc::Primitives::FlyoutShowOptions options;
         options.Placement(wuxc::Primitives::FlyoutPlacementMode::Top);
         options.ShowMode(wuxc::Primitives::FlyoutShowMode::TransientWithDismissOnPointerMoveAway);
-        AudioSection& section = part == kOutputPart ? output_ : input_;
+        AudioSection& section = output ? output_ : input_;
         closer_.Start(flyout_, panel, [this]() { CloseFlyout(); });
         flyout_.ShowAt(section.part.Border(), options);
+        if (output) {
+            TaskbarXaml::PostToApp(kMixerMessage, 1, 0);  // The app sends the apps while it's open.
+        }
+    }
+
+    static wuxc::Slider MakeVolumeSlider() {
+        wuxc::Slider slider;
+        slider.Minimum(0);
+        slider.Maximum(100);
+        slider.StepFrequency(1);
+        slider.IsThumbToolTipEnabled(false);
+        slider.VerticalAlignment(wux::VerticalAlignment::Center);
+        slider.Margin(wux::ThicknessHelper::FromLengths(8, 0, 8, 0));
+        return slider;
+    }
+
+    static wuxc::Border MakeSeparator() {
+        wuxc::Border line;
+        line.Height(1);
+        line.Margin(wux::ThicknessHelper::FromLengths(-12, 10, -12, 6));
+        line.Background(Brush(Color{0x30, 0x80, 0x80, 0x80}));
+        return line;
+    }
+
+    // A settings link was pressed: the flyout goes as Settings opens.
+    void CloseFlyoutSoon() {
+        closer_.Stop();
+        if (flyout_) {
+            try {
+                flyout_.Hide();  // Its Closed lets go of it, once the click is over.
+            } catch (...) {
+            }
+        }
+    }
+
+    // While muted, a slider's fill is grey.
+    void ShowMuted(wuxc::Slider const& slider, bool muted) {
+        if (muted) {
+            slider.Foreground(Brush(ThemeColorsFor(row_.ActualTheme() == wux::ElementTheme::Light).muted));
+        } else {
+            slider.ClearValue(wuxc::Control::ForegroundProperty());
+        }
     }
 
     void ShowFlyoutStatus() {
@@ -3605,13 +3914,7 @@ private:
         flyoutIcon_.Glyph(DeviceGlyph(flow, status));
         muteButton_.Border().IsHitTestVisible(status.has_value());
         slider_.IsEnabled(status.has_value());
-        // While muted, the slider's fill is grey.
-        if (status && status->muted) {
-            ThemeColors colors = ThemeColorsFor(row_.ActualTheme() == wux::ElementTheme::Light);
-            slider_.Foreground(Brush(colors.muted));
-        } else {
-            slider_.ClearValue(wuxc::Control::ForegroundProperty());
-        }
+        ShowMuted(slider_, status && status->muted);
         // While the slider is being moved, it shows where it's moved to, not the volume Windows has
         // caught up with.
         if (status && GetTickCount() - sliderMovedAt_ > 500) {
@@ -3620,6 +3923,96 @@ private:
             settingSlider_ = false;
         }
         flyoutValue_.Text(std::to_wstring((int)std::lround(slider_.Value())));
+        ShowMixer();
+    }
+
+    // ---- The volume mixer's rows
+
+    struct AppRow {
+        DWORD processId = 0;
+        std::wstring name;
+        wuxc::Grid grid{nullptr};
+        TaskbarXaml::Part button;
+        wuxc::Slider slider{nullptr};
+        wuxc::Primitives::RangeBase::ValueChanged_revoker changed;
+        bool setting = false;
+        DWORD movedAt = 0;
+    };
+
+    // The app's icon (a button that mutes it), then its volume.
+    std::unique_ptr<AppRow> MakeAppRow(const AppVolume& app) {
+        auto row = std::make_unique<AppRow>();
+        row->processId = app.processId;
+        row->name = app.name;
+        wux::UIElement icon{nullptr};
+        if (app.icon) {
+            wuxm::Imaging::WriteableBitmap bitmap(app.icon->size, app.icon->size);
+            auto buffer = bitmap.PixelBuffer();
+            memcpy(buffer.data(), app.icon->pixels.data(), std::min<size_t>(buffer.Capacity(), app.icon->pixels.size()));
+            bitmap.Invalidate();
+            wuxc::Image image;
+            image.Source(bitmap);
+            image.Width(20);
+            image.Height(20);
+            icon = image;
+        } else {
+            icon = TaskbarXaml::MakeGlyph(app.processId == 0 ? kGlyphSpeakers : kGlyphApp, 18);
+        }
+        auto button = row->button.Make(-1, icon, app.name.c_str());
+        button.Width(36);
+        button.Height(36);
+        wuxc::ToolTipService::SetToolTip(button, winrt::box_value(winrt::hstring(app.name)));
+        DWORD processId = app.processId;
+        row->button.onClick = [processId]() { TaskbarXaml::PostToApp(kAppMuteMessage, processId, 0); };
+        row->slider = MakeVolumeSlider();
+        wuxc::Grid::SetColumn(row->slider, 1);
+        AppRow* raw = row.get();
+        row->changed = row->slider.ValueChanged(winrt::auto_revoke, [raw](auto const&, wuxc::Primitives::RangeBaseValueChangedEventArgs const& args) {
+            if (!raw->setting) {
+                raw->movedAt = GetTickCount();
+                TaskbarXaml::PostToApp(kAppVolumeMessage, raw->processId, (LPARAM)std::lround(args.NewValue() * 10));
+            }
+        });
+        row->grid = wuxc::Grid();
+        row->grid.Margin(wux::ThicknessHelper::FromLengths(-4, 0, 40, 0));  // Its slider lines up with the device's.
+        wuxc::ColumnDefinition iconColumn;
+        iconColumn.Width(wux::GridLengthHelper::Auto());
+        row->grid.ColumnDefinitions().Append(iconColumn);
+        row->grid.ColumnDefinitions().Append(wuxc::ColumnDefinition());
+        row->grid.Children().Append(button);
+        row->grid.Children().Append(row->slider);
+        return row;
+    }
+
+    // The rows are made again only when the apps change, so a slider being moved stays.
+    void ShowMixer() {
+        if (!appsPanel_) {
+            return;
+        }
+        const std::vector<AppVolume>& apps = content_.apps;
+        bool same = rows_.size() == apps.size();
+        for (size_t i = 0; same && i < apps.size(); i++) {
+            same = rows_[i]->processId == apps[i].processId && rows_[i]->name == apps[i].name;
+        }
+        if (!same) {
+            appsPanel_.Children().Clear();
+            rows_.clear();
+            for (const AppVolume& app : apps) {
+                rows_.push_back(MakeAppRow(app));
+                appsPanel_.Children().Append(rows_.back()->grid);
+            }
+        }
+        noApps_.Visibility(apps.empty() ? wux::Visibility::Visible : wux::Visibility::Collapsed);
+        for (size_t i = 0; i < apps.size(); i++) {
+            AppRow& row = *rows_[i];
+            row.button.Border().Opacity(apps[i].muted ? 0.5 : 1.0);
+            ShowMuted(row.slider, apps[i].muted);
+            if (GetTickCount() - row.movedAt > 500) {
+                row.setting = true;
+                row.slider.Value(std::lround(apps[i].level * 100));
+                row.setting = false;
+            }
+        }
     }
 
     void CloseFlyout() {
@@ -3635,20 +4028,31 @@ private:
     }
 
     void ForgetFlyout() {
+        if (flyoutPart_ == kOutputPart) {
+            TaskbarXaml::PostToApp(kMixerMessage, 0, 0);
+        }
         closer_.Stop();
         flyoutClosed_.revoke();
         sliderChanged_.revoke();
         if (slider_ && releasedHandler_) {
             slider_.RemoveHandler(wux::UIElement::PointerReleasedEvent(), releasedHandler_);
         }
-        if (flyoutPanel_ && wheelHandler_) {
-            flyoutPanel_.RemoveHandler(wux::UIElement::PointerWheelChangedEvent(), wheelHandler_);
+        if (flyoutMaster_ && wheelHandler_) {
+            flyoutMaster_.RemoveHandler(wux::UIElement::PointerWheelChangedEvent(), wheelHandler_);
         }
         releasedHandler_ = nullptr;
         wheelHandler_ = nullptr;
         muteButton_.Forget();
+        mixerSettings_.Forget();
+        moreSettings_.Forget();
+        if (appsPanel_) {
+            appsPanel_.Children().Clear();
+        }
+        rows_.clear();
+        appsPanel_ = nullptr;
+        noApps_ = nullptr;
         flyout_ = nullptr;
-        flyoutPanel_ = nullptr;
+        flyoutMaster_ = nullptr;
         flyoutTitle_ = nullptr;
         flyoutDetail_ = nullptr;
         flyoutIcon_ = nullptr;
@@ -3671,11 +4075,13 @@ private:
     wuxc::Flyout flyout_{nullptr};
     wuxc::Primitives::FlyoutBase::Closed_revoker flyoutClosed_;
     int flyoutPart_ = -1;
-    wuxc::StackPanel flyoutPanel_{nullptr};
+    wuxc::StackPanel flyoutMaster_{nullptr};
     wuxc::TextBlock flyoutTitle_{nullptr};
     wuxc::TextBlock flyoutDetail_{nullptr};
     wuxc::FontIcon flyoutIcon_{nullptr};
     TaskbarXaml::Part muteButton_;
+    TaskbarXaml::Part mixerSettings_;
+    TaskbarXaml::Part moreSettings_;
     TaskbarXaml::HoverCloser closer_;
     wuxc::Slider slider_{nullptr};
     wuxc::Primitives::RangeBase::ValueChanged_revoker sliderChanged_;
@@ -3686,6 +4092,9 @@ private:
     bool settingSlider_ = false;
     DWORD sliderMovedAt_ = 0;
     int wheelRemainder_ = 0;
+    wuxc::StackPanel appsPanel_{nullptr};
+    wuxc::TextBlock noApps_{nullptr};
+    std::vector<std::unique_ptr<AppRow>> rows_;
 };
 
 AfView g_view;
@@ -3723,6 +4132,7 @@ public:
 private:
     static constexpr UINT_PTR kVolumeRefreshTimer = 2;
     static constexpr UINT_PTR kDingTimer = 3;
+    static constexpr UINT_PTR kMixerTimer = 4;  // Reads the apps again while the volume mixer is open.
     static constexpr UINT kWebcamChangedMessage = WM_APP + 1;
     static constexpr UINT kAudioChangedMessage = WM_APP + 2;
     static constexpr int kVolumeStepPercent = 2;  // Same step as the Windows volume flyout.
@@ -3773,7 +4183,14 @@ private:
 
     void OnWidgetClick(int part, TaskbarXaml::MouseButton button) {
         std::optional<EDataFlow> flow = FlowOfPart(part);
-        if (button == TaskbarXaml::MouseButton::Right) {
+        if (part < kOutputPart || part > kMixerSettingsPart) {
+            return;  // The volume mixer's apps, which say so themselves.
+        }
+        if (part == kSoundSettingsPart || part == kMixerSettingsPart) {
+            if (button == TaskbarXaml::MouseButton::Left) {
+                OpenWithShell(part == kMixerSettingsPart ? L"ms-settings:apps-volume" : L"ms-settings:sound");
+            }
+        } else if (button == TaskbarXaml::MouseButton::Right) {
             ShowMenu();
         } else if (button == TaskbarXaml::MouseButton::Middle || part == kOutputMutePart || part == kInputMutePart) {
             if (flow) {
@@ -3797,6 +4214,18 @@ private:
             case kDingTimer:
                 Ding();
                 break;
+            case kMixerTimer:
+                RefreshApps();
+                break;
+        }
+    }
+
+    // Sends the volume mixer the apps, when they or their volumes have changed.
+    void RefreshApps() {
+        std::vector<AppVolume> apps = audio_.AppVolumes();
+        if (apps != content_.apps) {
+            content_.apps = apps;
+            SendContent();
         }
     }
 
@@ -4022,6 +4451,21 @@ private:
                     audio_.SetDefaultVolume(*flow, std::clamp((float)lParam / 1000.0f, 0.0f, 1.0f));
                     RefreshSoon();
                 }
+                return;
+            case kMixerMessage:
+                if (wParam) {
+                    RefreshApps();
+                    SetTimer(messages_.Handle(), kMixerTimer, 500, nullptr);
+                } else {
+                    KillTimer(messages_.Handle(), kMixerTimer);
+                }
+                return;
+            case kAppVolumeMessage:
+                audio_.SetAppVolume((DWORD)wParam, std::clamp((float)lParam / 1000.0f, 0.0f, 1.0f));
+                return;
+            case kAppMuteMessage:
+                audio_.ToggleAppMute((DWORD)wParam);
+                RefreshApps();
                 return;
             case kVolumeDoneMessage:
                 if (FlowOfPart((int)wParam) == eRender) {

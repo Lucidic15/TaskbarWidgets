@@ -1587,6 +1587,7 @@ public:
     // For the widget's own flyouts, on the taskbar's thread.
     std::function<void(bool entered)> onHover;
     std::function<void()> onPress;
+    std::function<void()> onClick;  // Left-clicked, after the app is told.
 
     // plainOnClick: drops the highlight on a click, as the click shows something that copies the
     // screen.
@@ -1688,6 +1689,9 @@ private:
         switch (kind) {
             case PointerUpdateKind::LeftButtonReleased:
                 PostToApp(kClickMessage, part_, (LPARAM)MouseButton::Left);
+                if (onClick) {
+                    onClick();
+                }
                 break;
             case PointerUpdateKind::MiddleButtonReleased:
                 PostToApp(kClickMessage, part_, (LPARAM)MouseButton::Middle);
