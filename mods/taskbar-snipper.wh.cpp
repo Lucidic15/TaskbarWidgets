@@ -1097,11 +1097,11 @@ wux::FrameworkElement FindByName(wux::DependencyObject const& parent, std::wstri
     return nullptr;
 }
 
-// The child of the grid that is, or holds, the element.
-wux::FrameworkElement ChildHolding(wuxc::Grid const& grid, wux::FrameworkElement element) {
+// The child of the panel that is, or holds, the element.
+wux::FrameworkElement ChildHolding(wuxc::Panel const& panel, wux::FrameworkElement element) {
     while (element) {
         auto parent = wuxm::VisualTreeHelper::GetParent(element);
-        if (parent == grid) {
+        if (parent == panel) {
             return element;
         }
         element = parent.try_as<wux::FrameworkElement>();
@@ -1141,11 +1141,12 @@ wuxc::StackPanel NewPanel(Slot slot) {
     return panel;
 }
 
-// The slot's panel, made (in a column of its own in the notification area's grid, which makes
-// room for it) if it isn't there yet. Null while the taskbar's layout isn't ready.
+// The slot's panel, made if it isn't there yet: among the notification area's elements, which
+// make room for it. They're in a row (a StackPanel) in recent builds of Windows 11, and in the
+// columns of a Grid in earlier ones. Null while the taskbar's layout isn't ready.
 wuxc::StackPanel PanelFor(wux::FrameworkElement const& root, Slot slot) {
     std::wstring name = PanelName(slot);
-    auto tray = FindByName(root, L"SystemTrayFrameGrid").try_as<wuxc::Grid>();
+    auto tray = FindByName(root, L"SystemTrayFrameGrid").try_as<wuxc::Panel>();
     if (slot == Slot::Left) {
         // The taskbar's frame is one of the root's children.
         wux::FrameworkElement frame{nullptr};
@@ -1177,42 +1178,54 @@ wuxc::StackPanel PanelFor(wux::FrameworkElement const& root, Slot slot) {
     if (auto panel = FindByName(tray, name, 1).try_as<wuxc::StackPanel>()) {
         return panel;
     }
-    int column = 0;
+    // What it goes before: the notification area's first element, or the one holding the
+    // system icons or the clock.
+    wux::FrameworkElement anchor{nullptr};
     if (slot != Slot::Tray) {
-        auto anchor = ChildHolding(tray, FindByName(tray, slot == Slot::Clock ? L"NotificationCenterButton" : L"ControlCenterButton"));
+        anchor = ChildHolding(tray, FindByName(tray, slot == Slot::Clock ? L"NotificationCenterButton" : L"ControlCenterButton"));
         if (!anchor) {
             return nullptr;
         }
-        column = wuxc::Grid::GetColumn(anchor);
     }
+    wuxc::StackPanel panel = NewPanel(slot);
+    auto grid = tray.try_as<wuxc::Grid>();
+    if (!grid) {
+        uint32_t index = 0;
+        if (anchor) {
+            tray.Children().IndexOf(anchor, index);
+        }
+        tray.Children().InsertAt(index, panel);
+        return panel;
+    }
+    int column = anchor ? wuxc::Grid::GetColumn(anchor) : 0;
     wuxc::ColumnDefinition definition;
     definition.Width(wux::GridLengthHelper::Auto());
-    tray.ColumnDefinitions().InsertAt(column, definition);
-    for (auto const& child : tray.Children()) {
+    grid.ColumnDefinitions().InsertAt(column, definition);
+    for (auto const& child : grid.Children()) {
         if (auto element = child.try_as<wux::FrameworkElement>(); element && wuxc::Grid::GetColumn(element) >= column) {
             wuxc::Grid::SetColumn(element, wuxc::Grid::GetColumn(element) + 1);
         }
     }
-    wuxc::StackPanel panel = NewPanel(slot);
     wuxc::Grid::SetColumn(panel, column);
-    wuxc::Grid::SetRowSpan(panel, std::max(1, (int)tray.RowDefinitions().Size()));
-    tray.Children().Append(panel);
+    wuxc::Grid::SetRowSpan(panel, std::max(1, (int)grid.RowDefinitions().Size()));
+    grid.Children().Append(panel);
     return panel;
 }
 
-// Takes the panel out (and its column) once the last widget in it has gone.
+// Takes the panel out (and its column, in a grid) once the last widget in it has gone.
 void RemovePanelIfEmpty(wuxc::StackPanel const& panel) {
     if (panel.Children().Size() > 0) {
         return;
     }
-    auto grid = wuxm::VisualTreeHelper::GetParent(panel).try_as<wuxc::Grid>();
+    auto parent = wuxm::VisualTreeHelper::GetParent(panel).try_as<wuxc::Panel>();
     uint32_t index = 0;
-    if (!grid || !grid.Children().IndexOf(panel, index)) {
+    if (!parent || !parent.Children().IndexOf(panel, index)) {
         return;
     }
-    grid.Children().RemoveAt(index);
-    if (grid.Name() != L"SystemTrayFrameGrid") {
-        return;
+    parent.Children().RemoveAt(index);
+    auto grid = parent.try_as<wuxc::Grid>();
+    if (!grid || grid.Name() != L"SystemTrayFrameGrid") {
+        return;  // The taskbar's own grid (Slot::Left) has no column of the panel's.
     }
     int column = wuxc::Grid::GetColumn(panel);
     if (column >= (int)grid.ColumnDefinitions().Size()) {
