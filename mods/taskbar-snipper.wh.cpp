@@ -813,10 +813,11 @@ bool InTaskbarProcess() {
 }
 
 // A hidden top-level window of the app's thread: it owns the app's dialogs, and hears when a
-// Windows setting changes, which a window for messages only doesn't.
+// Windows setting or the displays change, which a window for messages only doesn't.
 class OwnerWindow {
 public:
     std::function<void()> onSettingChange;
+    std::function<void()> onDisplayChange;
 
     bool Create(const wchar_t* className) {
         if (const wchar_t* registered = RegisterForwardingClass<OwnerWindow>(className)) {
@@ -836,12 +837,22 @@ public:
     bool HandleMessage(UINT message, WPARAM wParam, LPARAM lParam, LRESULT& result) {
         if (message == WM_SETTINGCHANGE && onSettingChange) {
             onSettingChange();
+        } else if (message == WM_DISPLAYCHANGE && onDisplayChange) {
+            onDisplayChange();
         }
         return false;
     }
 
     HWND hwnd_ = nullptr;
 };
+
+// Forgets what the versions that dragged the widget along the taskbar kept: where it was, and its
+// link with the other widgets.
+void ForgetDraggedWidget() {
+    for (const wchar_t* name : {L"TaskbarOffset", L"LinkGroupOrder", L"LinkGroupOffset", L"LinkGroupStamp", L"Link", L"LinkStamp"}) {
+        Storage::Delete(name);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Menus: built on the app's thread, shown by the widget as a XAML menu on the taskbar's thread;
@@ -1523,9 +1534,14 @@ Highlights HighlightsFor(wux::FrameworkElement const& element) {
 // done to it goes to the app, as messages with the part's number.
 class Part {
 public:
+    // For the widget's own flyouts, on the taskbar's thread.
+    std::function<void(bool entered)> onHover;
+    std::function<void()> onPress;
+
     // plainOnClick: drops the highlight on a click, as the click shows something that copies the
     // screen.
     wuxc::Border Make(int part, wux::UIElement const& content, const wchar_t* name, bool plainOnClick = false) {
+        Forget();
         part_ = part;
         plainOnClick_ = plainOnClick;
         hovered_ = pressed_ = false;
@@ -1536,30 +1552,39 @@ public:
         border_.Background(wuxm::SolidColorBrush(winrt::Windows::UI::Color{}));  // Clear, but it takes the mouse.
         border_.Child(content);
         wux::Automation::AutomationProperties::SetName(border_, name);
-        border_.PointerEntered([this](auto const&, auto const&) {
+        enteredRevoker_ = border_.PointerEntered(winrt::auto_revoke, [this](auto const&, auto const&) {
             hovered_ = true;
             Paint();
             PostToApp(kHoverMessage, part_, 1);
+            if (onHover) {
+                onHover(true);
+            }
         });
-        border_.PointerExited([this](auto const&, auto const&) {
+        exitedRevoker_ = border_.PointerExited(winrt::auto_revoke, [this](auto const&, auto const&) {
             hovered_ = pressed_ = false;
             Paint();
             PostToApp(kHoverMessage, part_, 0);
+            if (onHover) {
+                onHover(false);
+            }
         });
-        border_.PointerCaptureLost([this](auto const&, auto const&) {
+        captureLostRevoker_ = border_.PointerCaptureLost(winrt::auto_revoke, [this](auto const&, auto const&) {
             pressed_ = false;
             Paint();
         });
-        border_.PointerPressed([this](auto const&, wux::Input::PointerRoutedEventArgs const& args) {
+        pressedRevoker_ = border_.PointerPressed(winrt::auto_revoke, [this](auto const&, wux::Input::PointerRoutedEventArgs const& args) {
             pressed_ = true;
             Paint();
             border_.CapturePointer(args.Pointer());
             args.Handled(true);
+            if (onPress) {
+                onPress();
+            }
         });
-        border_.PointerReleased([this](auto const&, wux::Input::PointerRoutedEventArgs const& args) { OnReleased(args); });
+        releasedRevoker_ = border_.PointerReleased(winrt::auto_revoke, [this](auto const&, wux::Input::PointerRoutedEventArgs const& args) { OnReleased(args); });
         // So the taskbar doesn't open its own menu too.
-        border_.RightTapped([](auto const&, wux::Input::RightTappedRoutedEventArgs const& args) { args.Handled(true); });
-        border_.PointerWheelChanged([this](auto const&, wux::Input::PointerRoutedEventArgs const& args) {
+        rightTappedRevoker_ = border_.RightTapped(winrt::auto_revoke, [](auto const&, wux::Input::RightTappedRoutedEventArgs const& args) { args.Handled(true); });
+        wheelRevoker_ = border_.PointerWheelChanged(winrt::auto_revoke, [this](auto const&, wux::Input::PointerRoutedEventArgs const& args) {
             // Precision touchpads scroll by fractions of a notch; they're added up.
             wheelRemainder_ += args.GetCurrentPoint(border_).Properties().MouseWheelDelta();
             int notches = wheelRemainder_ / WHEEL_DELTA;
@@ -1569,13 +1594,26 @@ public:
             }
             args.Handled(true);
         });
-        border_.ActualThemeChanged([this](auto const&, auto const&) { Paint(); });
+        themeRevoker_ = border_.ActualThemeChanged(winrt::auto_revoke, [this](auto const&, auto const&) { Paint(); });
         return border_;
     }
 
     wuxc::Border Border() const { return border_; }
 
-    void Forget() { border_ = nullptr; }
+    // Lets go of its element, taking its handlers off it first: the element may outlive this.
+    void Forget() {
+        enteredRevoker_.revoke();
+        exitedRevoker_.revoke();
+        captureLostRevoker_.revoke();
+        pressedRevoker_.revoke();
+        releasedRevoker_.revoke();
+        rightTappedRevoker_.revoke();
+        wheelRevoker_.revoke();
+        themeRevoker_.revoke();
+        border_ = nullptr;
+    }
+
+    ~Part() { Forget(); }
 
 private:
     void OnReleased(wux::Input::PointerRoutedEventArgs const& args) {
@@ -1627,6 +1665,14 @@ private:
     int part_ = 0;
     bool plainOnClick_ = false;
     wuxc::Border border_{nullptr};
+    wux::UIElement::PointerEntered_revoker enteredRevoker_;
+    wux::UIElement::PointerExited_revoker exitedRevoker_;
+    wux::UIElement::PointerCaptureLost_revoker captureLostRevoker_;
+    wux::UIElement::PointerPressed_revoker pressedRevoker_;
+    wux::UIElement::PointerReleased_revoker releasedRevoker_;
+    wux::UIElement::RightTapped_revoker rightTappedRevoker_;
+    wux::UIElement::PointerWheelChanged_revoker wheelRevoker_;
+    wux::FrameworkElement::ActualThemeChanged_revoker themeRevoker_;
     bool hovered_ = false;
     bool pressed_ = false;
     int wheelRemainder_ = 0;
@@ -6275,7 +6321,7 @@ public:
         pen_.thickness = std::clamp(Storage::GetInt(L"Thickness", pen_.thickness), kMinThickness, kMaxThickness);
         tidyRecordings_ = settings_.recordings.path;
         tidying_ = CreateThread(nullptr, 0, TidyProc, this, 0, nullptr);
-        Storage::Delete(L"TaskbarOffset");  // Where 1.1 kept the buttons when they were dragged.
+        ForgetDraggedWidget();
         if (!messages_.Create(L"TaskbarSnipper.Mod.Messages") || !owner_.Create(L"TaskbarSnipper.Mod.Owner") || !notice_.Create()) {
             return false;
         }
