@@ -1,10 +1,10 @@
 # Taskbar Widgets
 
 Three small widgets for the Windows 11 taskbar, in the style of the Windows weather widget. Each one
-is a [Windhawk](https://windhawk.net) mod, and the same code builds into a standalone app, for
-running it without Windhawk. Either way the widget sits inside the taskbar itself, so it moves and
-auto-hides with it: Windhawk loads the mods into Explorer, and an app puts its widget into
-Explorer's taskbar from its own process.
+is a [Windhawk](https://windhawk.net) mod that puts its widget into the taskbar's own layout, which
+makes room for it: next to the notification area, the system icons or the clock, or at the left
+end, as its **Position** setting says. There are standalone apps too, for running them without
+Windhawk (version 2.1 of the widgets, below).
 
 | Widget | What it does | App |
 | --- | --- | --- |
@@ -12,12 +12,10 @@ Explorer's taskbar from its own process.
 | [**Taskbar RDP Launcher**](https://windhawk.net/mods/taskbar-rdp-launcher) | Starts Remote Desktop full screen on the number of displays you pick | `RDPLauncher.exe` |
 | [**Taskbar Snipper**](https://windhawk.net/mods/taskbar-snipper) | Print Screen selects part of the screen to mark up and copy or save; Win+Shift+R records it as a video to trim and copy or save | `TaskbarSnipper.exe` |
 
-![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher linked on the taskbar](docs/widgets.png)
+![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](docs/widgets.png)
 
-Linked, they sit side by side as one: right-click any of them, open **Link widgets**, and choose
-**Link with** another. Dragging any of them moves them all, and a widget that hides leaves no gap.
-Linking works between the mods and the apps alike, with each one up to date: a widget on an older
-version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the others.
+Widgets in the same position sit side by side: right-click one and choose **Move left** or **Move
+right** to change their order.
 
 ## Taskbar Audio Flipper
 
@@ -25,7 +23,7 @@ version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the o
 
 - **Output** and **Input** show the device in use, with its volume. Click to switch to the next one,
   scroll to change the volume, middle-click to mute, and hover for a volume flyout like Windows'
-  own.
+  own, with a volume mixer for the apps using the output.
 - **Webcam** shows the chosen webcam and whether it's on. Click its camera to turn it on or off.
 - **Right-click** for each section's settings: which devices take turns, a device to pick directly,
   and the links to Windows' settings.
@@ -49,8 +47,8 @@ version (Taskbar Audio Flipper or Taskbar RDP Launcher 1.0) doesn't follow the o
   screenshot, save it, or both.
 - **Win+Shift+R**, or the record button, records an area as an MP4 video. When you stop, a window
   plays it back to trim its start and end, then copies or saves it.
-- **Settings**: which buttons show, the folders to save in (or choose them from the right-click
-  menu), and whether Win+Shift+R is taken over from the Snipping Tool.
+- **Settings**: which buttons show and where, the folders to save in (or choose them from the
+  right-click menu), and whether Win+Shift+R is taken over from the Snipping Tool.
 
 Each mod's full description is its readme, at the top of its file in [mods](mods).
 
@@ -58,10 +56,13 @@ Each mod's full description is its readme, at the top of its file in [mods](mods
 
 ### As Windhawk mods
 
-Taskbar Audio Flipper and Taskbar RDP Launcher are in Windhawk's mod catalog: in Windhawk, search
-for them under **Explore**. Taskbar Snipper isn't yet, and the files here can be newer than the
-catalog's. To install one from here: in Windhawk, click **Create a new mod**, replace the example
-with the file from [mods](mods), and click **Compile mod**, then **Exit editing mode**.
+The three are in Windhawk's mod catalog: in Windhawk, search for them under **Explore**. The files
+here can be newer than the catalog's. To install one from here: in Windhawk, click **Create a new
+mod**, replace the example with the file from [mods](mods), and click **Compile mod**, then **Exit
+editing mode**.
+
+The mods need Windows 11: the first time one starts, Windhawk downloads Microsoft's symbols for the
+taskbar, to find its way into the taskbar's layout.
 
 ### As apps
 
@@ -69,10 +70,15 @@ Download the apps from [Releases](../../releases), or build them (below). There'
 install: run one, and its widget appears on the taskbar. Its icon in the notification area has
 **Settings…** (Taskbar Snipper), **Start with Windows** and **Exit**.
 
+The apps are version 2.1 of the widgets: a widget can only go into the taskbar's layout from inside
+Explorer, which is where Windhawk loads the mods, so an app's widget floats over the taskbar instead,
+and you drag it to move it. They don't have what the mods have gained since, such as the Position
+setting and the volume mixer.
+
 - An app keeps its settings in `%APPDATA%\TaskbarWidgets\<app>` and the rest in the registry, under
   `HKEY_CURRENT_USER\Software\TaskbarWidgets\<app>`. Start it with `--log` to keep a log in
   `%LOCALAPPDATA%\TaskbarWidgets\<app>`.
-- Use the app or the mod: an app won't start while the same widget runs in Windhawk.
+- Use the app or the mod, not both.
 - **Coming from the old AudioFlipper or RDPLauncher app** (the C# one): exit it, then run the new
   one. It takes on the old app's settings the first time it runs, and **Start with Windows** in its
   menu takes the old app's place at startup.
@@ -91,15 +97,17 @@ The apps come out in `build`. To build one: `python tools/build.py taskbar-snipp
 ## How it's put together
 
 - [mods](mods): the three Windhawk mods, each one C++ file. They're the only code for each widget.
-- [standalone](standalone): the host that runs a mod as an app. `windhawk_api.h` stands in for
-  Windhawk's API when a mod is built into an app, and `host.cpp` provides it: settings from the
-  app's settings file (with a settings window made from the mod's settings block), values in the
-  registry, and a log. It starts and stops the mod as Windhawk does.
+- [standalone](standalone): the apps. [standalone/mods](standalone/mods) has the widgets as they
+  were at version 2.1, which ran in a process of their own, and `host.cpp` runs one as an app:
+  `windhawk_api.h` stands in for Windhawk's API, and the host provides it (settings from the app's
+  settings file, with a settings window made from the mod's settings block, values in the registry,
+  and a log), and starts and stops the mod as Windhawk does.
 - [tools](tools): `build.py`, which also writes each app's icon, manifest and version into it, and
   the scripts that drew the icons in [icons](icons).
 
-The widget code the three share (the taskbar window, menus, storage, and the link between them) is
-in each mod, since Windhawk mods are one file each: a change there belongs in all three.
+The code the three mods share (getting into the taskbar's layout, the positions, the widget's
+parts, menus and flyouts, and storage) is in each mod, since Windhawk mods are one file each: a
+change there belongs in all three.
 
 ## License
 

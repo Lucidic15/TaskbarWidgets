@@ -1,7 +1,7 @@
-// The standalone host: runs a Windhawk mod (mods/*.wh.cpp) as an app of its own. It gives the
-// mod Windhawk's API (windhawk_api.h): settings from a settings file, edited in a window made from
-// the mod's settings block; storage in the registry; and a log. It starts and stops the mod as
-// Windhawk would, and puts an icon in the notification area for the settings, starting with
+// The standalone host: runs a Windhawk mod (standalone/mods/*.wh.cpp) as an app of its own. It
+// gives the mod Windhawk's API (windhawk_api.h): settings from a settings file, edited in a window
+// made from the mod's settings block; storage in the registry; and a log. It starts and stops the
+// mod as Windhawk would, and puts an icon in the notification area for the settings, starting with
 // Windows, and exiting.
 
 #include <windows.h>

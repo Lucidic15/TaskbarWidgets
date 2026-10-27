@@ -1,5 +1,7 @@
-"""Builds the standalone apps: each Windhawk mod in mods/ with the host in standalone/, into
-build/<App>.exe (64-bit). Needs Python 3 and an LLVM MinGW Clang: Windhawk's own (found where
+"""Builds the standalone apps: each app's mod in standalone/mods/ with the host in standalone/, into
+build/<App>.exe (64-bit). Those are the widgets as they were at v2.1, which ran in a process of their
+own; the Windhawk mods in mods/ have since moved into the taskbar's own layout, which only a mod
+loaded into Explorer can reach. Needs Python 3 and an LLVM MinGW Clang: Windhawk's own (found where
 Windhawk installs it), or one given with --compiler (a folder with clang++ in it).
 
 Usage: python tools/build.py [--compiler DIR] [mod ids...]
@@ -62,7 +64,7 @@ def wide_literal(text):
 
 def write_mod_info(path, mod_id, meta, settings, widget_class, app):
     with open(path, "w", encoding="utf-8", newline="\n") as out:
-        out.write("// Written by tools/build.py from mods/%s.wh.cpp.\n#pragma once\n\n" % mod_id)
+        out.write("// Written by tools/build.py from standalone/mods/%s.wh.cpp.\n#pragma once\n\n" % mod_id)
         out.write("#define WH_MOD_ID %s\n" % wide_literal(mod_id))
         out.write("#define WH_MOD_VERSION %s\n" % wide_literal(meta["version"]))
         out.write("#define WHHOST_NAME %s\n" % wide_literal(meta["name"]))
@@ -197,7 +199,7 @@ def find_compiler(folder):
 
 def build(mod_id, compiler, out_dir):
     app = APPS[mod_id]
-    source = os.path.join(ROOT, "mods", mod_id + ".wh.cpp")
+    source = os.path.join(ROOT, "standalone", "mods", mod_id + ".wh.cpp")
     meta, settings = read_mod(source)
     work = os.path.join(out_dir, mod_id)
     os.makedirs(work, exist_ok=True)
@@ -229,7 +231,7 @@ def build(mod_id, compiler, out_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Builds the standalone apps from the Windhawk mods.")
+    parser = argparse.ArgumentParser(description="Builds the standalone apps from their mods in standalone/mods.")
     parser.add_argument("--compiler", help="a folder with LLVM MinGW's clang++ (default: Windhawk's)")
     parser.add_argument("--out", default=os.path.join(ROOT, "build"), help="where the apps go (default: build)")
     parser.add_argument("mods", nargs="*", help="mod ids to build (default: all)")
