@@ -2098,6 +2098,84 @@ private:
     int wheelRemainder_ = 0;
 };
 
+// Closes a flyout opened by hovering a part of the widget once the mouse is off both the flyout and
+// the part for a moment (it may be crossing the gap between them), but not while a mouse button is
+// held (dragging a slider, say). The flyout's own dismissal can't see the mouse leave for the
+// desktop, only for the rest of the taskbar.
+class HoverCloser {
+public:
+    // Watches the flyout, just opened from its part, which the mouse is on; close closes it.
+    void Start(wuxc::Primitives::FlyoutBase const& flyout, wux::FrameworkElement const& content, std::function<void()> close) {
+        Stop();
+        close_ = std::move(close);
+        partHovered_ = true;
+        flyoutHovered_ = false;
+        awayTicks_ = 0;
+        openedRevoker_ = flyout.Opened(winrt::auto_revoke, [this, content](auto const&, auto const&) { WatchPresenter(content); });
+        if (!timer_) {
+            timer_ = wux::DispatcherTimer();
+            timer_.Interval(std::chrono::milliseconds(100));
+            tickRevoker_ = timer_.Tick(winrt::auto_revoke, [this](auto const&, auto const&) { Tick(); });
+        }
+        timer_.Start();
+    }
+
+    // The mouse came onto the flyout's part, or left it.
+    void PartHovered(bool hovered) { partHovered_ = hovered; }
+
+    void Stop() {
+        if (timer_) {
+            timer_.Stop();
+        }
+        openedRevoker_.revoke();
+        enteredRevoker_.revoke();
+        exitedRevoker_.revoke();
+        close_ = nullptr;
+    }
+
+    // Lets go of its timer too, as the widget goes.
+    void Forget() {
+        Stop();
+        tickRevoker_.revoke();
+        timer_ = nullptr;
+    }
+
+private:
+    // Hears the mouse on the flyout's presenter, around the content with its padding.
+    void WatchPresenter(wux::FrameworkElement const& content) {
+        wux::DependencyObject element = content;
+        while (element && !element.try_as<wuxc::FlyoutPresenter>()) {
+            element = wuxm::VisualTreeHelper::GetParent(element);
+        }
+        wux::UIElement target = element ? element.as<wux::UIElement>() : content.as<wux::UIElement>();
+        enteredRevoker_ = target.PointerEntered(winrt::auto_revoke, [this](auto const&, auto const&) { flyoutHovered_ = true; });
+        exitedRevoker_ = target.PointerExited(winrt::auto_revoke, [this](auto const&, auto const&) { flyoutHovered_ = false; });
+    }
+
+    void Tick() {
+        bool held = GetAsyncKeyState(VK_LBUTTON) < 0 || GetAsyncKeyState(VK_RBUTTON) < 0 || GetAsyncKeyState(VK_MBUTTON) < 0;
+        if (partHovered_ || flyoutHovered_ || held) {
+            awayTicks_ = 0;
+            return;
+        }
+        if (++awayTicks_ >= 3 && close_) {
+            timer_.Stop();
+            auto close = close_;  // Closing stops this, letting go of close_.
+            close();
+        }
+    }
+
+    std::function<void()> close_;
+    wux::DispatcherTimer timer_{nullptr};
+    wux::DispatcherTimer::Tick_revoker tickRevoker_;
+    wuxc::Primitives::FlyoutBase::Opened_revoker openedRevoker_;
+    wux::UIElement::PointerEntered_revoker enteredRevoker_;
+    wux::UIElement::PointerExited_revoker exitedRevoker_;
+    bool partHovered_ = false;
+    bool flyoutHovered_ = false;
+    int awayTicks_ = 0;
+};
+
 wuxc::FontIcon MakeGlyph(const wchar_t* glyph, double size) {
     wuxc::FontIcon icon;
     icon.FontFamily(wuxm::FontFamily(L"Segoe Fluent Icons"));
@@ -3230,6 +3308,7 @@ public:
 
     void Forget() override {
         CloseFlyout();
+        closer_.Forget();
         StopHoverTimer();
         hoverTimer_ = nullptr;
         themeRevoker_.revoke();
@@ -3407,6 +3486,9 @@ private:
     // button. It opens after a moment of hovering, and closes once the mouse moves away from it.
 
     void OnSectionHover(int part, bool entered) {
+        if (flyout_ && part == flyoutPart_) {
+            closer_.PartHovered(entered);
+        }
         StopHoverTimer();
         hoveredPart_ = entered ? part : -1;
         if (!entered || (flyout_ && flyoutPart_ == part)) {
@@ -3508,6 +3590,7 @@ private:
         options.Placement(wuxc::Primitives::FlyoutPlacementMode::Top);
         options.ShowMode(wuxc::Primitives::FlyoutShowMode::TransientWithDismissOnPointerMoveAway);
         AudioSection& section = part == kOutputPart ? output_ : input_;
+        closer_.Start(flyout_, panel, [this]() { CloseFlyout(); });
         flyout_.ShowAt(section.part.Border(), options);
     }
 
@@ -3552,6 +3635,7 @@ private:
     }
 
     void ForgetFlyout() {
+        closer_.Stop();
         flyoutClosed_.revoke();
         sliderChanged_.revoke();
         if (slider_ && releasedHandler_) {
@@ -3592,6 +3676,7 @@ private:
     wuxc::TextBlock flyoutDetail_{nullptr};
     wuxc::FontIcon flyoutIcon_{nullptr};
     TaskbarXaml::Part muteButton_;
+    TaskbarXaml::HoverCloser closer_;
     wuxc::Slider slider_{nullptr};
     wuxc::Primitives::RangeBase::ValueChanged_revoker sliderChanged_;
     // Handlers added with AddHandler, as added, to take off again.
