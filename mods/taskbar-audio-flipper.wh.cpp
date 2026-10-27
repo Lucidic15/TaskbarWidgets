@@ -71,7 +71,8 @@ your User Account Control settings.
 From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
 [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and
 [Taskbar RDP Launcher](https://windhawk.net/mods/taskbar-rdp-launcher). With their mods running
-too, widgets in the same position sit side by side, in that order.
+too, widgets in the same position sit side by side, in that order; right-click one and choose
+**Move left** or **Move right** to change it.
 
 ## Good to know
 
@@ -151,7 +152,7 @@ change). Use the app or the mod, not both: each shows its own widget.
 namespace {
 
 // Where the widget goes among the Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher
-// widgets in the same position on the taskbar, from the left.
+// widgets in the same position on the taskbar, from the left, until it's moved from its menu.
 constexpr int kWidgetOrder = 1;
 
 }  // namespace
@@ -1494,7 +1495,7 @@ wux::FrameworkElement ChildHolding(wuxc::Panel const& panel, wux::FrameworkEleme
 }
 
 // ---- Where the widget goes: a slot in the taskbar's layout. Each slot is one horizontal panel,
-// shared by the widgets put there, in a fixed order (kWidgetOrder).
+// shared by the widgets put there, in order of their places (StoredPlace).
 
 enum class Slot {
     Tray,         // Left of the notification area.
@@ -1718,6 +1719,19 @@ public:
     virtual void Forget() = 0;
 };
 
+// The widget's place among the widgets in its slot, from the left: a number kept in the mod's
+// storage, and on the widget's element (as its Tag) for the others to see. Moving a widget gives it
+// a number between its new neighbors', so theirs stay as they are.
+constexpr int kPlaceUnit = 1 << 16;
+
+int StoredPlace() {
+    return Storage::GetInt(L"WidgetPlace", kWidgetOrder * kPlaceUnit);
+}
+
+int PlaceOf(wux::FrameworkElement const& element) {
+    return winrt::unbox_value_or<int>(element.Tag(), 0);
+}
+
 wuxc::MenuFlyout g_menu{nullptr};  // The widget's menu while it's open.
 winrt::event_token g_menuClosed{};
 // Where the widget was last right-clicked, to open its menu there.
@@ -1788,6 +1802,33 @@ public:
 
     wux::FrameworkElement Element() const { return element_; }
 
+    // Whether there's another widget on the left (direction -1) or right (1) in the slot.
+    bool CanMove(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        return panel && (int)index + direction >= 0 && (int)index + direction < (int)panel.Children().Size();
+    }
+
+    // Moves the widget past its neighbor on the left (direction -1) or right (1), to stay there.
+    void Move(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        int count = panel ? (int)panel.Children().Size() : 0;
+        int target = (int)index + direction;
+        if (target < 0 || target >= count) {
+            return;
+        }
+        auto placeAt = [&](int i) { return PlaceOf(panel.Children().GetAt(i).as<wux::FrameworkElement>()); };
+        // Halfway between the neighbor and the one beyond it (or a step past the neighbor, at the end).
+        int neighbor = placeAt(target);
+        int beyond = target + direction >= 0 && target + direction < count ? placeAt(target + direction) : neighbor + direction * 2 * kPlaceUnit;
+        int place = neighbor + (beyond - neighbor) / 2;
+        Storage::SetInt(L"WidgetPlace", place);
+        element_.Tag(winrt::box_value(place));
+        panel.Children().RemoveAt(index);
+        panel.Children().InsertAt(target, element_);
+    }
+
     // Where the widget is on screen, for popups beside it (from the app's thread).
     RECT ScreenBounds() {
         AcquireSRWLockShared(&boundsLock_);
@@ -1806,6 +1847,11 @@ public:
     }
 
 private:
+    wuxc::StackPanel SlotPanel(uint32_t& index) {
+        auto panel = element_ ? wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>() : nullptr;
+        return panel && panel.Children().IndexOf(element_, index) ? panel : nullptr;
+    }
+
     void TryAttach() {
         try {
             auto root = GetXamlRoot(taskbar_);
@@ -1816,12 +1862,13 @@ private:
                 return;
             }
             element_ = view_->Build();
-            element_.Tag(winrt::box_value(kWidgetOrder));
+            int place = StoredPlace();
+            element_.Tag(winrt::box_value(place));
             // In order among the widgets in the slot.
             uint32_t index = 0;
             for (; index < panel.Children().Size(); index++) {
                 auto other = panel.Children().GetAt(index).try_as<wux::FrameworkElement>();
-                if (other && winrt::unbox_value_or<int>(other.Tag(), 0) > kWidgetOrder) {
+                if (other && PlaceOf(other) > place) {
                     break;
                 }
             }
@@ -2105,8 +2152,13 @@ void AddMenuEntries(winrt::Windows::Foundation::Collections::IVector<wuxc::MenuF
     }
 }
 
-// Opens the menu where the widget was last right-clicked. The chosen item goes to the app once
-// the menu has closed, so what it does (a screenshot, say) doesn't have the menu in it.
+// Commands of the widget's own, for moving it among the others in its slot.
+constexpr int kMoveLeftCommand = -1;
+constexpr int kMoveRightCommand = -2;
+
+// Opens the menu where the widget was last right-clicked, with Move left and Move right when other
+// widgets share its slot. The chosen item goes to the app once the menu has closed, so what it
+// does (a screenshot, say) doesn't have the menu in it.
 void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto target = g_menuTarget && g_menuTarget.XamlRoot() ? g_menuTarget : g_host.Element();
     if (!target || !target.XamlRoot()) {
@@ -2118,14 +2170,27 @@ void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto chosen = std::make_shared<int>(0);
     wuxc::MenuFlyout menu;
     AddMenuEntries(menu.Items(), entries, chosen);
+    if (g_host.CanMove(-1) || g_host.CanMove(1)) {
+        menu.Items().Append(wuxc::MenuFlyoutSeparator());
+        for (int command : {kMoveLeftCommand, kMoveRightCommand}) {
+            wuxc::MenuFlyoutItem item;
+            item.Text(command == kMoveLeftCommand ? L"Move left" : L"Move right");
+            item.IsEnabled(g_host.CanMove(command == kMoveLeftCommand ? -1 : 1));
+            item.Click([chosen, command](auto const&, auto const&) { *chosen = command; });
+            menu.Items().Append(item);
+        }
+    }
     g_menuClosed = menu.Closed([chosen](auto const& sender, auto const&) {
         if (g_menu == sender) {
             g_menu = nullptr;
         }
-        if (*chosen) {
+        if (*chosen == kMoveLeftCommand || *chosen == kMoveRightCommand) {
+            g_host.Move(*chosen == kMoveLeftCommand ? -1 : 1);
+        } else if (*chosen) {
             PostToApp(kMenuCommandMessage, *chosen, 0);
         }
     });
+    menu.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
     wuxc::Primitives::FlyoutShowOptions options;
     options.Position(g_menuPoint);
     options.Placement(wuxc::Primitives::FlyoutPlacementMode::TopEdgeAlignedLeft);
@@ -3097,7 +3162,7 @@ wuxm::SolidColorBrush Brush(Color color) {
 
 // The colors for the taskbar's light or dark theme, with Windows' accent color.
 struct ThemeColors {
-    Color foreground, accent, track, muted, divider;
+    Color foreground, accent, track, muted;
 };
 
 ThemeColors ThemeColorsFor(bool light) {
@@ -3111,7 +3176,6 @@ ThemeColors ThemeColorsFor(bool light) {
     }
     colors.track = light ? Color{60, 28, 28, 28} : Color{80, 255, 255, 255};
     colors.muted = light ? Color{255, 96, 96, 96} : Color{255, 197, 197, 197};
-    colors.divider = light ? Color{50, 28, 28, 28} : Color{60, 255, 255, 255};
     return colors;
 }
 
@@ -3125,12 +3189,18 @@ wuxc::TextBlock MakeText(double size, bool semibold) {
     return text;
 }
 
-wuxc::Border MakeDivider() {
-    wuxc::Border divider;
-    divider.Width(1);
-    divider.Height(20);
-    divider.VerticalAlignment(wux::VerticalAlignment::Center);
-    return divider;
+// Content for a widget part: the icon, then the rest of the part's width for the text, so it fills
+// the part (and is cut short with "…" when the part is as wide as it gets).
+wuxc::Grid MakeIconAndText(wux::UIElement const& icon, wux::FrameworkElement const& text) {
+    wuxc::Grid grid;
+    wuxc::ColumnDefinition iconColumn;
+    iconColumn.Width(wux::GridLengthHelper::Auto());
+    grid.ColumnDefinitions().Append(iconColumn);
+    grid.ColumnDefinitions().Append(wuxc::ColumnDefinition());
+    grid.Children().Append(icon);
+    wuxc::Grid::SetColumn(text, 1);
+    grid.Children().Append(text);
+    return grid;
 }
 
 const wchar_t* DeviceGlyph(EDataFlow flow, const std::optional<AudioStatus>& status) {
@@ -3152,11 +3222,7 @@ public:
         row_.Orientation(wuxc::Orientation::Horizontal);
         themeRevoker_ = row_.ActualThemeChanged(winrt::auto_revoke, [this](auto const&, auto const&) { Show(content_); });
         row_.Children().Append(BuildAudio(output_, kOutputPart));
-        inputDivider_ = MakeDivider();
-        row_.Children().Append(inputDivider_);
         row_.Children().Append(BuildAudio(input_, kInputPart));
-        webcamDivider_ = MakeDivider();
-        row_.Children().Append(webcamDivider_);
         row_.Children().Append(BuildWebcam());
         Show(content_);
         return row_;
@@ -3182,8 +3248,6 @@ public:
         webcam_.name = nullptr;
         webcam_.state = nullptr;
         row_ = nullptr;
-        inputDivider_ = nullptr;
-        webcamDivider_ = nullptr;
     }
 
     void Show(const WidgetContent& content) {
@@ -3195,12 +3259,6 @@ public:
         ShowAudio(output_, eRender, content_.showOutput, content_.output, colors);
         ShowAudio(input_, eCapture, content_.showInput, content_.input, colors);
         ShowWebcam(colors);
-        // A divider before each section after the first.
-        inputDivider_.Visibility(content_.showInput && content_.showOutput ? wux::Visibility::Visible : wux::Visibility::Collapsed);
-        webcamDivider_.Visibility(content_.webcam && (content_.showOutput || content_.showInput) ? wux::Visibility::Visible
-                                                                                                 : wux::Visibility::Collapsed);
-        inputDivider_.Background(Brush(colors.divider));
-        webcamDivider_.Background(Brush(colors.divider));
         if (flyout_) {
             bool shown = flyoutPart_ == kOutputPart ? content_.showOutput : content_.showInput;
             if (shown) {
@@ -3233,12 +3291,9 @@ private:
     // The device's icon, then its name over "45%" and a level bar, like the weather widget's two
     // lines.
     wuxc::Border BuildAudio(AudioSection& section, int part) {
-        wuxc::StackPanel content;
-        content.Orientation(wuxc::Orientation::Horizontal);
         section.icon = TaskbarXaml::MakeGlyph(kGlyphSpeakers, 18);
         section.icon.Width(24);
         section.icon.Margin(wux::ThicknessHelper::FromLengths(8, 0, 0, 0));
-        content.Children().Append(section.icon);
         wuxc::StackPanel lines;
         lines.VerticalAlignment(wux::VerticalAlignment::Center);
         lines.Margin(wux::ThicknessHelper::FromLengths(10, 0, 12, 0));
@@ -3246,17 +3301,20 @@ private:
         lines.Children().Append(section.name);
         wuxc::Grid second;
         wuxc::ColumnDefinition labelColumn;
-        labelColumn.Width(wux::GridLengthHelper::FromPixels(42));
+        labelColumn.Width(wux::GridLengthHelper::Auto());
         second.ColumnDefinitions().Append(labelColumn);
         second.ColumnDefinitions().Append(wuxc::ColumnDefinition());
         section.level = MakeText(12, false);
         section.level.Opacity(0.75);
+        section.level.MinWidth(36);  // As wide for "5%" as for "100%", so the widget keeps its width.
         second.Children().Append(section.level);
-        // The bar: the fill takes the volume's share of the width, in the first of two columns.
+        // The bar, as long as the name above it or a little more: the fill takes the volume's share
+        // of the width, in the first of two columns.
         section.bar = wuxc::Grid();
         section.bar.Height(3);
+        section.bar.MinWidth(28);
         section.bar.VerticalAlignment(wux::VerticalAlignment::Center);
-        section.bar.Margin(wux::ThicknessHelper::FromLengths(0, 2, 0, 0));
+        section.bar.Margin(wux::ThicknessHelper::FromLengths(4, 2, 0, 0));
         section.bar.ColumnDefinitions().Append(wuxc::ColumnDefinition());
         section.bar.ColumnDefinitions().Append(wuxc::ColumnDefinition());
         section.track = wuxc::Border();
@@ -3269,10 +3327,8 @@ private:
         wuxc::Grid::SetColumn(section.bar, 1);
         second.Children().Append(section.bar);
         lines.Children().Append(second);
-        content.Children().Append(lines);
-        auto border = section.part.Make(part, content, part == kOutputPart ? L"Output" : L"Input");
+        auto border = section.part.Make(part, MakeIconAndText(section.icon, lines), part == kOutputPart ? L"Output" : L"Input");
         // Sized to fit the device's name, like the weather widget sizes itself to its text.
-        border.MinWidth(136);
         border.MaxWidth(256);
         section.part.onHover = [this, part](bool entered) { OnSectionHover(part, entered); };
         section.part.onPress = [this]() {
@@ -3303,8 +3359,6 @@ private:
 
     // The camera icon (struck through while off), then the webcam's name over "On" or "Off".
     wuxc::Border BuildWebcam() {
-        wuxc::StackPanel content;
-        content.Orientation(wuxc::Orientation::Horizontal);
         webcam_.icon = wuxc::Grid();
         webcam_.icon.Width(24);
         webcam_.icon.Height(24);
@@ -3320,19 +3374,16 @@ private:
         webcam_.slash.StrokeStartLineCap(wuxm::PenLineCap::Round);
         webcam_.slash.StrokeEndLineCap(wuxm::PenLineCap::Round);
         webcam_.icon.Children().Append(webcam_.slash);
-        content.Children().Append(webcam_.icon);
         wuxc::StackPanel lines;
         lines.VerticalAlignment(wux::VerticalAlignment::Center);
         lines.Margin(wux::ThicknessHelper::FromLengths(6, 0, 12, 0));
-        lines.MaxWidth(178);  // Longer names are cut short.
         webcam_.name = MakeText(12, true);
         webcam_.state = MakeText(12, false);
         webcam_.state.Opacity(0.75);
         lines.Children().Append(webcam_.name);
         lines.Children().Append(webcam_.state);
-        content.Children().Append(lines);
-        auto border = webcam_.part.Make(kWebcamPart, content, L"Webcam");
-        border.MinWidth(96);
+        auto border = webcam_.part.Make(kWebcamPart, MakeIconAndText(webcam_.icon, lines), L"Webcam");
+        border.MaxWidth(216);  // Longer names are cut short.
         webcam_.part.onHover = [this](bool) { StopHoverTimer(); };
         webcam_.part.onPress = [this]() { CloseFlyout(); };
         return border;
@@ -3449,6 +3500,7 @@ private:
         flyoutPanel_ = panel;
 
         flyout_ = wuxc::Flyout();
+        flyout_.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
         flyout_.Content(panel);
         flyoutClosed_ = flyout_.Closed(winrt::auto_revoke, [this](auto const&, auto const&) { ForgetFlyout(); });
         ShowFlyoutStatus();
@@ -3529,8 +3581,6 @@ private:
     AudioSection output_;
     AudioSection input_;
     WebcamSection webcam_;
-    wuxc::Border inputDivider_{nullptr};
-    wuxc::Border webcamDivider_{nullptr};
     wux::DispatcherTimer hoverTimer_{nullptr};
     int hoveredPart_ = -1;
     // The volume flyout, while it's open.

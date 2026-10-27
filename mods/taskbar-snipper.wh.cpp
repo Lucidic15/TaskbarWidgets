@@ -94,7 +94,8 @@ whichever you changed last is used.
 From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
 [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and
 [Taskbar RDP Launcher](https://windhawk.net/mods/taskbar-rdp-launcher). With their mods running
-too, widgets in the same position sit side by side, in that order.
+too, widgets in the same position sit side by side, in that order; right-click one and choose
+**Move left** or **Move right** to change it.
 
 ## Good to know
 
@@ -208,7 +209,7 @@ namespace {
 using ARGB = gp::ARGB;
 
 // Where the buttons go among the Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher
-// widgets in the same position on the taskbar, from the left.
+// widgets in the same position on the taskbar, from the left, until they're moved from their menu.
 constexpr int kWidgetOrder = 0;
 
 // ---------------------------------------------------------------------------
@@ -1124,7 +1125,7 @@ wux::FrameworkElement ChildHolding(wuxc::Panel const& panel, wux::FrameworkEleme
 }
 
 // ---- Where the widget goes: a slot in the taskbar's layout. Each slot is one horizontal panel,
-// shared by the widgets put there, in a fixed order (kWidgetOrder).
+// shared by the widgets put there, in order of their places (StoredPlace).
 
 enum class Slot {
     Tray,         // Left of the notification area.
@@ -1348,6 +1349,19 @@ public:
     virtual void Forget() = 0;
 };
 
+// The widget's place among the widgets in its slot, from the left: a number kept in the mod's
+// storage, and on the widget's element (as its Tag) for the others to see. Moving a widget gives it
+// a number between its new neighbors', so theirs stay as they are.
+constexpr int kPlaceUnit = 1 << 16;
+
+int StoredPlace() {
+    return Storage::GetInt(L"WidgetPlace", kWidgetOrder * kPlaceUnit);
+}
+
+int PlaceOf(wux::FrameworkElement const& element) {
+    return winrt::unbox_value_or<int>(element.Tag(), 0);
+}
+
 wuxc::MenuFlyout g_menu{nullptr};  // The widget's menu while it's open.
 winrt::event_token g_menuClosed{};
 // Where the widget was last right-clicked, to open its menu there.
@@ -1418,6 +1432,33 @@ public:
 
     wux::FrameworkElement Element() const { return element_; }
 
+    // Whether there's another widget on the left (direction -1) or right (1) in the slot.
+    bool CanMove(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        return panel && (int)index + direction >= 0 && (int)index + direction < (int)panel.Children().Size();
+    }
+
+    // Moves the widget past its neighbor on the left (direction -1) or right (1), to stay there.
+    void Move(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        int count = panel ? (int)panel.Children().Size() : 0;
+        int target = (int)index + direction;
+        if (target < 0 || target >= count) {
+            return;
+        }
+        auto placeAt = [&](int i) { return PlaceOf(panel.Children().GetAt(i).as<wux::FrameworkElement>()); };
+        // Halfway between the neighbor and the one beyond it (or a step past the neighbor, at the end).
+        int neighbor = placeAt(target);
+        int beyond = target + direction >= 0 && target + direction < count ? placeAt(target + direction) : neighbor + direction * 2 * kPlaceUnit;
+        int place = neighbor + (beyond - neighbor) / 2;
+        Storage::SetInt(L"WidgetPlace", place);
+        element_.Tag(winrt::box_value(place));
+        panel.Children().RemoveAt(index);
+        panel.Children().InsertAt(target, element_);
+    }
+
     // Where the widget is on screen, for popups beside it (from the app's thread).
     RECT ScreenBounds() {
         AcquireSRWLockShared(&boundsLock_);
@@ -1436,6 +1477,11 @@ public:
     }
 
 private:
+    wuxc::StackPanel SlotPanel(uint32_t& index) {
+        auto panel = element_ ? wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>() : nullptr;
+        return panel && panel.Children().IndexOf(element_, index) ? panel : nullptr;
+    }
+
     void TryAttach() {
         try {
             auto root = GetXamlRoot(taskbar_);
@@ -1446,12 +1492,13 @@ private:
                 return;
             }
             element_ = view_->Build();
-            element_.Tag(winrt::box_value(kWidgetOrder));
+            int place = StoredPlace();
+            element_.Tag(winrt::box_value(place));
             // In order among the widgets in the slot.
             uint32_t index = 0;
             for (; index < panel.Children().Size(); index++) {
                 auto other = panel.Children().GetAt(index).try_as<wux::FrameworkElement>();
-                if (other && winrt::unbox_value_or<int>(other.Tag(), 0) > kWidgetOrder) {
+                if (other && PlaceOf(other) > place) {
                     break;
                 }
             }
@@ -1735,8 +1782,13 @@ void AddMenuEntries(winrt::Windows::Foundation::Collections::IVector<wuxc::MenuF
     }
 }
 
-// Opens the menu where the widget was last right-clicked. The chosen item goes to the app once
-// the menu has closed, so what it does (a screenshot, say) doesn't have the menu in it.
+// Commands of the widget's own, for moving it among the others in its slot.
+constexpr int kMoveLeftCommand = -1;
+constexpr int kMoveRightCommand = -2;
+
+// Opens the menu where the widget was last right-clicked, with Move left and Move right when other
+// widgets share its slot. The chosen item goes to the app once the menu has closed, so what it
+// does (a screenshot, say) doesn't have the menu in it.
 void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto target = g_menuTarget && g_menuTarget.XamlRoot() ? g_menuTarget : g_host.Element();
     if (!target || !target.XamlRoot()) {
@@ -1748,14 +1800,27 @@ void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto chosen = std::make_shared<int>(0);
     wuxc::MenuFlyout menu;
     AddMenuEntries(menu.Items(), entries, chosen);
+    if (g_host.CanMove(-1) || g_host.CanMove(1)) {
+        menu.Items().Append(wuxc::MenuFlyoutSeparator());
+        for (int command : {kMoveLeftCommand, kMoveRightCommand}) {
+            wuxc::MenuFlyoutItem item;
+            item.Text(command == kMoveLeftCommand ? L"Move left" : L"Move right");
+            item.IsEnabled(g_host.CanMove(command == kMoveLeftCommand ? -1 : 1));
+            item.Click([chosen, command](auto const&, auto const&) { *chosen = command; });
+            menu.Items().Append(item);
+        }
+    }
     g_menuClosed = menu.Closed([chosen](auto const& sender, auto const&) {
         if (g_menu == sender) {
             g_menu = nullptr;
         }
-        if (*chosen) {
+        if (*chosen == kMoveLeftCommand || *chosen == kMoveRightCommand) {
+            g_host.Move(*chosen == kMoveLeftCommand ? -1 : 1);
+        } else if (*chosen) {
             PostToApp(kMenuCommandMessage, *chosen, 0);
         }
     });
+    menu.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
     wuxc::Primitives::FlyoutShowOptions options;
     options.Position(g_menuPoint);
     options.Placement(wuxc::Primitives::FlyoutPlacementMode::TopEdgeAlignedLeft);

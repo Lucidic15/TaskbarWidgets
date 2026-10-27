@@ -67,7 +67,8 @@ sometimes docked keeps separate buttons for the desk and for the road.
 From the left: [Taskbar Snipper](https://windhawk.net/mods/taskbar-snipper),
 [Taskbar Audio Flipper](https://windhawk.net/mods/taskbar-audio-flipper) and
 [Taskbar RDP Launcher](https://windhawk.net/mods/taskbar-rdp-launcher). With their mods running
-too, widgets in the same position sit side by side, in that order.
+too, widgets in the same position sit side by side, in that order; right-click one and choose
+**Move left** or **Move right** to change it.
 
 ## Good to know
 
@@ -144,7 +145,7 @@ doesn't change). Use the app or the mod, not both: each shows its own widget.
 namespace {
 
 // Where the widget goes among the Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher
-// widgets in the same position on the taskbar, from the left.
+// widgets in the same position on the taskbar, from the left, until it's moved from its menu.
 constexpr int kWidgetOrder = 2;
 
 }  // namespace
@@ -1512,7 +1513,7 @@ wux::FrameworkElement ChildHolding(wuxc::Panel const& panel, wux::FrameworkEleme
 }
 
 // ---- Where the widget goes: a slot in the taskbar's layout. Each slot is one horizontal panel,
-// shared by the widgets put there, in a fixed order (kWidgetOrder).
+// shared by the widgets put there, in order of their places (StoredPlace).
 
 enum class Slot {
     Tray,         // Left of the notification area.
@@ -1736,6 +1737,19 @@ public:
     virtual void Forget() = 0;
 };
 
+// The widget's place among the widgets in its slot, from the left: a number kept in the mod's
+// storage, and on the widget's element (as its Tag) for the others to see. Moving a widget gives it
+// a number between its new neighbors', so theirs stay as they are.
+constexpr int kPlaceUnit = 1 << 16;
+
+int StoredPlace() {
+    return Storage::GetInt(L"WidgetPlace", kWidgetOrder * kPlaceUnit);
+}
+
+int PlaceOf(wux::FrameworkElement const& element) {
+    return winrt::unbox_value_or<int>(element.Tag(), 0);
+}
+
 wuxc::MenuFlyout g_menu{nullptr};  // The widget's menu while it's open.
 winrt::event_token g_menuClosed{};
 // Where the widget was last right-clicked, to open its menu there.
@@ -1806,6 +1820,33 @@ public:
 
     wux::FrameworkElement Element() const { return element_; }
 
+    // Whether there's another widget on the left (direction -1) or right (1) in the slot.
+    bool CanMove(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        return panel && (int)index + direction >= 0 && (int)index + direction < (int)panel.Children().Size();
+    }
+
+    // Moves the widget past its neighbor on the left (direction -1) or right (1), to stay there.
+    void Move(int direction) {
+        uint32_t index = 0;
+        auto panel = SlotPanel(index);
+        int count = panel ? (int)panel.Children().Size() : 0;
+        int target = (int)index + direction;
+        if (target < 0 || target >= count) {
+            return;
+        }
+        auto placeAt = [&](int i) { return PlaceOf(panel.Children().GetAt(i).as<wux::FrameworkElement>()); };
+        // Halfway between the neighbor and the one beyond it (or a step past the neighbor, at the end).
+        int neighbor = placeAt(target);
+        int beyond = target + direction >= 0 && target + direction < count ? placeAt(target + direction) : neighbor + direction * 2 * kPlaceUnit;
+        int place = neighbor + (beyond - neighbor) / 2;
+        Storage::SetInt(L"WidgetPlace", place);
+        element_.Tag(winrt::box_value(place));
+        panel.Children().RemoveAt(index);
+        panel.Children().InsertAt(target, element_);
+    }
+
     // Where the widget is on screen, for popups beside it (from the app's thread).
     RECT ScreenBounds() {
         AcquireSRWLockShared(&boundsLock_);
@@ -1824,6 +1865,11 @@ public:
     }
 
 private:
+    wuxc::StackPanel SlotPanel(uint32_t& index) {
+        auto panel = element_ ? wuxm::VisualTreeHelper::GetParent(element_).try_as<wuxc::StackPanel>() : nullptr;
+        return panel && panel.Children().IndexOf(element_, index) ? panel : nullptr;
+    }
+
     void TryAttach() {
         try {
             auto root = GetXamlRoot(taskbar_);
@@ -1834,12 +1880,13 @@ private:
                 return;
             }
             element_ = view_->Build();
-            element_.Tag(winrt::box_value(kWidgetOrder));
+            int place = StoredPlace();
+            element_.Tag(winrt::box_value(place));
             // In order among the widgets in the slot.
             uint32_t index = 0;
             for (; index < panel.Children().Size(); index++) {
                 auto other = panel.Children().GetAt(index).try_as<wux::FrameworkElement>();
-                if (other && winrt::unbox_value_or<int>(other.Tag(), 0) > kWidgetOrder) {
+                if (other && PlaceOf(other) > place) {
                     break;
                 }
             }
@@ -2123,8 +2170,13 @@ void AddMenuEntries(winrt::Windows::Foundation::Collections::IVector<wuxc::MenuF
     }
 }
 
-// Opens the menu where the widget was last right-clicked. The chosen item goes to the app once
-// the menu has closed, so what it does (a screenshot, say) doesn't have the menu in it.
+// Commands of the widget's own, for moving it among the others in its slot.
+constexpr int kMoveLeftCommand = -1;
+constexpr int kMoveRightCommand = -2;
+
+// Opens the menu where the widget was last right-clicked, with Move left and Move right when other
+// widgets share its slot. The chosen item goes to the app once the menu has closed, so what it
+// does (a screenshot, say) doesn't have the menu in it.
 void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto target = g_menuTarget && g_menuTarget.XamlRoot() ? g_menuTarget : g_host.Element();
     if (!target || !target.XamlRoot()) {
@@ -2136,14 +2188,27 @@ void ShowMenu(const std::vector<MenuEntry>& entries) {
     auto chosen = std::make_shared<int>(0);
     wuxc::MenuFlyout menu;
     AddMenuEntries(menu.Items(), entries, chosen);
+    if (g_host.CanMove(-1) || g_host.CanMove(1)) {
+        menu.Items().Append(wuxc::MenuFlyoutSeparator());
+        for (int command : {kMoveLeftCommand, kMoveRightCommand}) {
+            wuxc::MenuFlyoutItem item;
+            item.Text(command == kMoveLeftCommand ? L"Move left" : L"Move right");
+            item.IsEnabled(g_host.CanMove(command == kMoveLeftCommand ? -1 : 1));
+            item.Click([chosen, command](auto const&, auto const&) { *chosen = command; });
+            menu.Items().Append(item);
+        }
+    }
     g_menuClosed = menu.Closed([chosen](auto const& sender, auto const&) {
         if (g_menu == sender) {
             g_menu = nullptr;
         }
-        if (*chosen) {
+        if (*chosen == kMoveLeftCommand || *chosen == kMoveRightCommand) {
+            g_host.Move(*chosen == kMoveLeftCommand ? -1 : 1);
+        } else if (*chosen) {
             PostToApp(kMenuCommandMessage, *chosen, 0);
         }
     });
+    menu.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
     wuxc::Primitives::FlyoutShowOptions options;
     options.Position(g_menuPoint);
     options.Placement(wuxc::Primitives::FlyoutPlacementMode::TopEdgeAlignedLeft);
@@ -3577,6 +3642,20 @@ wuxc::TextBlock MakeText(double size, bool semibold) {
     return text;
 }
 
+// Content for a widget part: the icon, then the rest of the part's width for the text, so it fills
+// the part (and is cut short with "…" when the part is as wide as it gets).
+wuxc::Grid MakeIconAndText(wux::UIElement const& icon, wux::FrameworkElement const& text) {
+    wuxc::Grid grid;
+    wuxc::ColumnDefinition iconColumn;
+    iconColumn.Width(wux::GridLengthHelper::Auto());
+    grid.ColumnDefinitions().Append(iconColumn);
+    grid.ColumnDefinitions().Append(wuxc::ColumnDefinition());
+    grid.Children().Append(icon);
+    wuxc::Grid::SetColumn(text, 1);
+    grid.Children().Append(text);
+    return grid;
+}
+
 // On the taskbar's thread.
 class RdpView : public TaskbarXaml::View {
 public:
@@ -3586,12 +3665,9 @@ public:
 
         // The This PC icon, then the name over the address, like the weather widget's two lines;
         // just the name without an address.
-        wuxc::StackPanel label;
-        label.Orientation(wuxc::Orientation::Horizontal);
         auto icon = TaskbarXaml::MakeGlyph(kGlyphThisPC, 18);
         icon.Width(24);
         icon.Margin(wux::ThicknessHelper::FromLengths(8, 0, 0, 0));
-        label.Children().Append(icon);
         wuxc::StackPanel lines;
         lines.VerticalAlignment(wux::VerticalAlignment::Center);
         lines.Margin(wux::ThicknessHelper::FromLengths(10, 0, 12, 0));
@@ -3600,22 +3676,12 @@ public:
         detail_.Opacity(0.75);
         lines.Children().Append(title_);
         lines.Children().Append(detail_);
-        label.Children().Append(lines);
-        auto connection = connection_.Make(kConnectionPart, label, L"Computer");
+        auto connection = connection_.Make(kConnectionPart, MakeIconAndText(icon, lines), L"Computer");
         // Sized to fit the name and address, like the weather widget sizes itself to its text.
-        connection.MinWidth(116);
         connection.MaxWidth(396);
         connection_.onHover = [this](bool) { StopHoverTimer(); };
         connection_.onPress = [this]() { CloseFlyout(); };
         row_.Children().Append(connection);
-
-        divider_ = wuxc::Border();
-        divider_.Width(1);
-        divider_.Height(20);
-        divider_.VerticalAlignment(wux::VerticalAlignment::Center);
-        dividerTheme_ = divider_.ActualThemeChanged(winrt::auto_revoke, [this](auto const&, auto const&) { PaintDivider(); });
-        PaintDivider();
-        row_.Children().Append(divider_);
 
         buttonsPanel_ = wuxc::StackPanel();
         buttonsPanel_.Orientation(wuxc::Orientation::Horizontal);
@@ -3631,11 +3697,9 @@ public:
         hoverTimer_ = nullptr;
         connection_.Forget();
         buttons_.clear();
-        dividerTheme_.revoke();
         row_ = nullptr;
         title_ = nullptr;
         detail_ = nullptr;
-        divider_ = nullptr;
         buttonsPanel_ = nullptr;
     }
 
@@ -3662,7 +3726,6 @@ public:
             button.icon.Opacity(content_.busyButton == (int)i ? 0.43 : 1.0);
             wux::Automation::AutomationProperties::SetName(button.part.Border(), L"Connect on " + DescribeCount(count));
         }
-        divider_.Visibility(buttons_.empty() ? wux::Visibility::Collapsed : wux::Visibility::Visible);
         if (flyout_) {
             if (flyoutButton_ < (int)content_.buttons.size()) {
                 FillMap();
@@ -3701,11 +3764,6 @@ private:
         buttons_.push_back(std::move(button));
     }
 
-    void PaintDivider() {
-        bool light = divider_.ActualTheme() == wux::ElementTheme::Light;
-        divider_.Background(Brush(light ? Color{50, 28, 28, 28} : Color{60, 255, 255, 255}));
-    }
-
     // A display button opens its map after a moment of hovering it; the map closes itself once the
     // mouse moves away from it.
     void OnButtonHover(int button, bool entered) {
@@ -3742,6 +3800,7 @@ private:
         map_.Width(288);
         mapLoaded_ = map_.Loaded(winrt::auto_revoke, [this](auto const&, auto const&) { FillMap(); });  // In the flyout's theme.
         flyout_ = wuxc::Flyout();
+        flyout_.ShouldConstrainToRootBounds(false);  // Above the taskbar, outside its XAML.
         flyout_.Content(map_);
         flyoutClosed_ = flyout_.Closed(winrt::auto_revoke, [this](auto const&, auto const&) { ForgetFlyout(); });
         FillMap();
@@ -3933,8 +3992,6 @@ private:
     TaskbarXaml::Part connection_;
     wuxc::TextBlock title_{nullptr};
     wuxc::TextBlock detail_{nullptr};
-    wuxc::Border divider_{nullptr};
-    wux::FrameworkElement::ActualThemeChanged_revoker dividerTheme_;
     wuxc::StackPanel buttonsPanel_{nullptr};
     std::vector<std::unique_ptr<DisplayButton>> buttons_;
     wux::DispatcherTimer hoverTimer_{nullptr};
