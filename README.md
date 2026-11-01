@@ -15,7 +15,8 @@ Windhawk (version 2.1 of the widgets, below).
 ![Taskbar Snipper, Taskbar Audio Flipper and Taskbar RDP Launcher side by side on the taskbar](docs/widgets.png)
 
 Widgets in the same position sit side by side: right-click one and choose **Move left** or **Move
-right** to change their order.
+right** to change their order. **Change icons…** in the same menu gives any of the widgets' icons
+another glyph from the Windows icon font.
 
 ## Taskbar Audio Flipper
 
