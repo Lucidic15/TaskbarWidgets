@@ -47,7 +47,7 @@ right** to change their order.
   screenshot, save it, or both.
 - **Win+Shift+R**, or the record button, records an area as an MP4 video. When you stop, a window
   plays it back to trim its start and end, then copies or saves it.
-- **Settings**: which buttons show and where, the folders to save in (or choose them from the
+- **Settings**: which buttons show, in which order and where, the folders to save in (or choose them from the
   right-click menu), and whether Win+Shift+R is taken over from the Snipping Tool.
 
 Each mod's full description is its readme, at the top of its file in [mods](mods).
